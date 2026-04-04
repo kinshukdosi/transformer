@@ -16,6 +16,6 @@ Run `pytest` from the root directory.
 
 ### Dataset and tokenization
 
-Going to use the tinyshakespeare text that Karpathy uses in his video <br>
-"Attention Is All You Need" implements byte-pair encoding (as mentioned in 5.1 Training Data and Batching), I'll do the same. Karpathy's minbpe project is a good resource to refer to for this. <br>
+Uses Karpathy's tinyshakespeare dataset for now. <br>
+"Attention Is All You Need" implements byte-pair encoding (as mentioned in 5.1 Training Data and Batching), this project does the same. <br>
 
