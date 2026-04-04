@@ -4,7 +4,11 @@ tokenizers. The idea is to replace the most common contiguous sequences of
 characters into new tokens until a vocabulary of a predefined size is obtained.
 """
 
+import json
+from pathlib import Path
+
 BYTE_RANGE = 256
+DATA_DIR = Path(__file__).parent / "data"
 
 
 class Tokenizer:
@@ -73,15 +77,15 @@ class Tokenizer:
 
             counts = self._get_counts(ids)
 
-            # we need to find the pair with the lowest merge index, because merges must be
-            # replayed in the same order that they were learned during training
-            # e.g. if t+o -> 256 happened before to+p -> 257, you need to merge t+o before
-            # you can see to+p
+            # we need to find the pair with the lowest merge index, because merges must
+            # be replayed in the same order that they were learned during training
+            # e.g. if t+o -> 256 happened before to+p -> 257, you need to merge t+o
+            # before you can see to+p
 
             min_pair = min(counts, key=lambda x: self.merges.get(x, float("inf")))
-            # the default value for .get() is set to inf here, this is because if there are
-            # no more merges left, then min() will return the first pair (from counts),
-            # so then this will be our condition to return early
+            # the default value for .get() is set to inf here, this is because if there
+            # are no more merges left, then min() will return the first pair (from
+            # counts), so then this will be our condition to return early
 
             if min_pair not in self.merges:
                 break
@@ -90,3 +94,37 @@ class Tokenizer:
             ids = self._replace(ids, min_pair, merge_id)
 
         return ids
+
+    def save(self, path: Path = DATA_DIR / "tokenizer.json"):
+        assert path.suffix == ".json", "Path should point to .json file"
+
+        data = {
+            # we decode the value here because bytes are not JSON serializable
+            # we use latin-1 because some byte sequences between 0-255 aren't valid
+            # utf-8, so this could cause errors if the training data had unusual chars
+            "vocab": {k: v.decode("latin-1") for k, v in self.vocab.items()},
+            # JSON doesn't support tuple keys, so we store merges this way
+            "merges": [[a, b, c] for (a, b), c in self.merges.items()],
+        }
+
+        # good to specify encoding here in case vocabulary includes non-ASCII tokens
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    @classmethod
+    def load(cls, path: Path = DATA_DIR / "tokenizer.json"):
+        assert path.exists(), "File does not exist"
+
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        assert "vocab" in data, "vocab not found in file"
+        assert "merges" in data, "merges not found in file"
+
+        tokenizer = cls()
+        tokenizer.vocab = {
+            int(k): v.encode("latin-1") for k, v in data["vocab"].items()
+        }
+        tokenizer.merges = {(a, b): c for a, b, c in data["merges"]}
+
+        return tokenizer
