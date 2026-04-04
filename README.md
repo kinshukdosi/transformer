@@ -19,3 +19,9 @@ Run `pytest` from the root directory.
 Uses Karpathy's tinyshakespeare dataset for now. <br>
 "Attention Is All You Need" implements byte-pair encoding (as mentioned in 5.1 Training Data and Batching), this project does the same. <br>
 
+## Models
+### Bigram language model
+
+
+Simple model, predicts the next token given only the current token. It's essentially a lookup table with dimensions based on the size of the vocabulary of the dataset. Each row of the lookup table corresponds to one token, and contains the scores for the next token.
+[Implementation here.](models/bigram.py) <br>

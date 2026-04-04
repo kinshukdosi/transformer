@@ -5,9 +5,11 @@ https://huggingface.co/datasets/karpathy/tiny_shakespeare
 """
 
 import torch
+import math
 from pathlib import Path
 from data_loader import batch_data
 from tokenizer import Tokenizer
+from models.bigram import BigramLanguageModel
 
 TEST_DIR = Path(__file__).parent
 DATA_DIR = TEST_DIR.parent / "data"
@@ -68,3 +70,26 @@ def test_data_loader():
 
     assert inputs.shape == (batch_size, block_size)
     assert targets.shape == (batch_size, block_size)
+
+
+def test_bigram_language_model():
+    """Test running forward pass on untrained bigram language model"""
+
+    text = get_tinyshakespeare_text()
+    tokenizer = Tokenizer()
+    vocab_size = 257
+    batch_size = 10
+    block_size = 20
+    model = BigramLanguageModel(vocab_size)
+
+    tokenizer.train(text, vocab_size)
+    encoded = torch.tensor(tokenizer.encode(text))
+
+    inputs, targets = batch_data(encoded, batch_size, block_size)
+
+    logits, loss = model(inputs, targets)
+    expected_loss = math.log(vocab_size)
+    rmse = math.sqrt((expected_loss - loss) ** 2)
+
+    assert rmse < 1, "loss too far from expected"
+    assert logits.shape == (batch_size, block_size, vocab_size)
