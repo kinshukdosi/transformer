@@ -14,6 +14,10 @@ Requirements: Python 3.12
 ### To run tests
 Run `pytest` from the root directory.
 
+### To train a model on dataset
+Create a config.yaml file with your desired training parameters <br>
+Run `python train.py --config <path_to_config_file>`
+
 ### Dataset and tokenization
 
 Uses Karpathy's tinyshakespeare dataset for now. <br>
@@ -25,3 +29,17 @@ Uses Karpathy's tinyshakespeare dataset for now. <br>
 
 Simple model, predicts the next token given only the current token. It's essentially a lookup table with dimensions based on the size of the vocabulary of the dataset. Each row of the lookup table corresponds to one token, and contains the scores for the next token.
 [Implementation here.](models/bigram.py) <br>
+
+The default training configuration in [bigram.yaml](config/bigram.yaml) achieves the following results:
+
+| Setting        | Value                    |
+|----------------|--------------------------|
+| Vocab Size     | 257                      |
+| Dataset        | tinyshakespeare          |
+| Batch Size     | 32                       |
+| Iterations     | 25k                      |
+| Learning Rate  | 1e-3 (AdamW)             |
+
+| Result         | Value |
+|----------------|-------|
+| Loss           | ~2.5  |

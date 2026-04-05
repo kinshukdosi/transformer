@@ -6,13 +6,16 @@ https://huggingface.co/datasets/karpathy/tiny_shakespeare
 
 import torch
 import math
+import train
 from pathlib import Path
 from data_loader import batch_data
 from tokenizer import Tokenizer
+from train import parse_config
 from models.bigram import BigramLanguageModel
 
 TEST_DIR = Path(__file__).parent
 DATA_DIR = TEST_DIR.parent / "data"
+CONFIG_DIR = TEST_DIR.parent / "config"
 
 
 def get_tinyshakespeare_text() -> str:
@@ -93,3 +96,12 @@ def test_bigram_language_model():
 
     assert rmse < 1, "loss too far from expected"
     assert logits.shape == (batch_size, block_size, vocab_size)
+
+
+def test_train_bigram_model():
+    """Test very short training on tinyshakespeare dataset"""
+
+    cfg_path = CONFIG_DIR / "bigram.yaml"
+    cfg = parse_config(cfg_path)
+    cfg.iterations = 500
+    train.main(cfg)

@@ -10,7 +10,7 @@ from typing import Optional
 
 
 class BigramLanguageModel(nn.Module):
-    def __init__(self, vocab_size):
+    def __init__(self, vocab_size: int):
         super().__init__()
 
         # this creates a learnable matrix. in this case, both dimensions are vocab_size
