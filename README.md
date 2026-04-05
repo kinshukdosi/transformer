@@ -24,22 +24,50 @@ Uses Karpathy's tinyshakespeare dataset for now. <br>
 "Attention Is All You Need" implements byte-pair encoding (as mentioned in 5.1 Training Data and Batching), this project does the same. <br>
 
 ## Models
-### Bigram language model
 
+### Bigram Language Model
 
-Simple model, predicts the next token given only the current token. It's essentially a lookup table with dimensions based on the size of the vocabulary of the dataset. Each row of the lookup table corresponds to one token, and contains the scores for the next token.
-[Implementation here.](models/bigram.py) <br>
+A simple model that predicts the next token given only the current token. It is essentially a lookup table with dimensions based on the vocabulary size of the dataset. Each row corresponds to a token and contains scores for the next token.
+[Implementation here.](models/bigram.py)
 
-The default training configuration in [bigram.yaml](config/bigram.yaml) achieves the following results:
+#### Configuration
 
-| Setting        | Value                    |
-|----------------|--------------------------|
-| Vocab Size     | 257                      |
-| Dataset        | tinyshakespeare          |
-| Batch Size     | 32                       |
-| Iterations     | 25k                      |
-| Learning Rate  | 1e-3 (AdamW)             |
+| Setting       | Value           |
+| ------------- | --------------- |
+| Vocab Size    | 257             |
+| Dataset       | tinyshakespeare |
+| Batch Size    | 32              |
+| Iterations    | 25k             |
+| Learning Rate | 1e-3 (AdamW)    |
 
-| Result         | Value |
-|----------------|-------|
-| Loss           | ~2.5  |
+#### Results
+
+| Metric          | Value |
+| --------------- | ----- |
+| Validation Loss | ~2.5  |
+
+---
+
+### Attention Model
+
+Implemented in [models/attention.py](models/attention.py). This model uses multi-head attention, nothing else. The configuration I used for the multi-head training can be found [here](config/attention.yaml)
+
+#### Configuration
+
+| Setting         | Value           |
+| --------------- | --------------- |
+| Vocab Size      | 257             |
+| Dataset         | tinyshakespeare |
+| Batch Size      | 32              |
+| Iterations      | 25k             |
+| Learning Rate   | 1e-3 (AdamW)    |
+| Block Size      | 16              |
+| Head Size       | 32              |
+| Number of Heads | 1 / 4           |
+
+#### Results
+
+| Model Variant | Validation Loss |
+| ------------- | --------------- |
+| Single Head   | ~2.4            |
+| 4 Heads       | ~2.1            |

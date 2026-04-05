@@ -7,6 +7,7 @@ https://huggingface.co/datasets/karpathy/tiny_shakespeare
 import torch
 import math
 import train
+import pytest
 from pathlib import Path
 from data_loader import batch_data
 from tokenizer import Tokenizer
@@ -98,10 +99,11 @@ def test_bigram_language_model():
     assert logits.shape == (batch_size, block_size, vocab_size)
 
 
-def test_train_bigram_model():
+@pytest.mark.parametrize(("config_file"), ["bigram.yaml", "attention.yaml"])
+def test_train_bigram_model(config_file):
     """Test very short training on tinyshakespeare dataset"""
 
-    cfg_path = CONFIG_DIR / "bigram.yaml"
+    cfg_path = CONFIG_DIR / config_file
     cfg = parse_config(cfg_path)
     cfg.iterations = 500
     train.main(cfg)

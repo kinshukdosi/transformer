@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from tokenizer import Tokenizer
 from data_loader import batch_data
 from models.bigram import BigramLanguageModel
+from models.attention import AttentionHeadLanguageModel
 
-supported_models = ["bigram"]
+supported_models = ["bigram", "attention"]
 supported_optimizers = ["AdamW"]
 
 
 @dataclass
-class ModelConfig:
+class BaseConfig:
     model_type: str
     vocab_size: int
     data_path: Path
@@ -26,12 +27,23 @@ class ModelConfig:
     eval_interval: int
 
 
-def parse_config(cfg_path) -> ModelConfig:
+@dataclass
+class BigramConfig(BaseConfig):
+    pass
+
+
+@dataclass
+class AttentionConfig(BaseConfig):
+    n_embd: int
+    num_heads: int
+
+
+def parse_config(cfg_path) -> BaseConfig:
 
     with open(cfg_path, "r") as f:
         cfg = yaml.safe_load(f)
 
-    return ModelConfig(
+    base_kwargs = dict(
         model_type=cfg["model_type"],
         vocab_size=cfg["vocab_size"],
         data_path=Path(cfg["dataset"]),
@@ -45,8 +57,21 @@ def parse_config(cfg_path) -> ModelConfig:
         eval_interval=cfg["eval_interval"],
     )
 
+    model_type = cfg["model_type"]
 
-def main(config: ModelConfig):
+    if model_type == "bigram":
+        return BigramConfig(**base_kwargs)
+    elif model_type == "attention":
+        return AttentionConfig(
+            **base_kwargs,
+            n_embd=cfg["n_embd"],
+            num_heads=cfg["num_heads"],
+        )
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}")
+
+
+def main(config: BaseConfig):
 
     assert config.model_type in supported_models, "Model not supported"
     assert config.vocab_size > 256, "Vocab size must be greater than 256"
@@ -68,9 +93,15 @@ def main(config: ModelConfig):
 
     model = None
     if config.model_type == "bigram":
+        assert isinstance(config, BigramConfig)
         # block size = 1 because bigram only looks at previous token
         assert config.block_size == 1, "Block size should be 1 for bigram model"
         model = BigramLanguageModel(config.vocab_size)
+    elif config.model_type == "attention":
+        assert isinstance(config, AttentionConfig)
+        model = AttentionHeadLanguageModel(
+            config.vocab_size, config.n_embd, config.block_size, config.num_heads
+        )
 
     if model is None:
         raise TypeError("Model is not set! Aborting")
