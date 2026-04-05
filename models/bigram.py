@@ -48,3 +48,24 @@ class BigramLanguageModel(nn.Module):
             )
 
         return logits, loss
+
+    def generate(self, inputs: torch.Tensor, num_tokens: int) -> torch.Tensor:
+        """Generate num_tokens new tokens for each independent sequence (batch)"""
+        batch_size, block_size = inputs.shape
+        output = inputs
+
+        for _ in range(num_tokens):
+            logits, _ = self(output)  # forward pass
+
+            # only consider logits for last token, because this is how the bigram model
+            # works. more complicated models will look at more previous tokens to make
+            # more accurate predictions
+            logits = logits[:, -1, :]
+            probabilities = F.softmax(logits, dim=-1)  # convert logits to probabilities
+
+            # sample one new token per batch
+            next_tokens = torch.multinomial(probabilities, num_samples=1)
+            output = torch.cat((output, next_tokens), dim=1)  # append new token
+
+        assert output.shape == (batch_size, block_size + num_tokens)
+        return output
