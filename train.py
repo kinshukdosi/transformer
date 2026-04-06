@@ -4,6 +4,7 @@ import torch
 import pathlib
 import dataclasses
 from pathlib import Path
+from typing import Optional
 from dataclasses import dataclass
 from tokenizer import Tokenizer
 from data_loader import batch_data
@@ -43,44 +44,24 @@ class AttentionConfig(BaseConfig):
     num_heads: int
 
 
-def parse_config(cfg_path) -> BaseConfig:
-
-    with open(cfg_path, "r") as f:
-        cfg = yaml.safe_load(f)
-
-    base_kwargs = dict(
-        model_type=cfg["model_type"],
-        vocab_size=cfg["vocab_size"],
-        data_path=Path(cfg["dataset"]),
-        block_size=cfg["block_size"],
-        train_split=cfg["train_split"],
-        batch_size=cfg["batch_size"],
-        iterations=cfg["iterations"],
-        optimizer=cfg["optimizer"],
-        lr=float(cfg["learning_rate"]),
-        eval_iterations=cfg["eval_iterations"],
-        eval_interval=cfg["eval_interval"],
-    )
+def parse_config(cfg: dict) -> BaseConfig:
 
     model_type = cfg["model_type"]
+    cfg["data_path"] = Path(cfg["data_path"])
+    cfg["lr"] = float(cfg["lr"])
 
     if model_type == "bigram":
-        return BigramConfig(**base_kwargs)
+        return BigramConfig(**cfg)
     elif model_type == "attention":
-        return AttentionConfig(
-            **base_kwargs,
-            n_embd=cfg["n_embd"],
-            num_heads=cfg["num_heads"],
-        )
+        return AttentionConfig(**cfg)
     else:
         raise ValueError(f"Unknown model_type: {model_type}")
 
 
 def main(
     config: BaseConfig,
-    output_ckpt: Path = Path("checkpoint.pt"),
-    save: bool = False,
-    load: bool = False,
+    output_ckpt: Optional[Path] = None,
+    input_ckpt: Optional[Path] = None,
 ):
 
     assert config.model_type in supported_models, "Model not supported"
@@ -124,8 +105,9 @@ def main(
     if optim is None:
         raise TypeError("Optimizer is not set! Aborting")
 
-    if load:
-        checkpoint = torch.load(input_ckpt_path)
+    if input_ckpt is not None:
+        print(f"Starting training from checkpoint: {input_ckpt}")
+        checkpoint = torch.load(input_ckpt)
         model.load_state_dict(checkpoint["model_state_dict"])
         optim.load_state_dict(checkpoint["optimizer_state_dict"])
 
@@ -155,55 +137,69 @@ def main(
         loss.backward()
         optim.step()
 
-    if save:
+    if output_ckpt is not None:
         checkpoint = {
             "config": dataclasses.asdict(config),
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optim.state_dict(),
         }
+        print(f"Saving checkpoint: {args.save}")
         torch.save(checkpoint, output_ckpt)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", "-c", type=Path, help="Path to .yaml config file")
-    parser.add_argument("--save", "-s", action="store_true", help="Save training state")
-    parser.add_argument("--load", "-l", action="store_true", help="Load training state")
     parser.add_argument("--iterations", type=int, help="Override number of iterations")
     parser.add_argument(
-        "--output", "-o", default="checkpoint.pt", help="Output checkpoint file path"
+        "--save",
+        "-s",
+        nargs="?",
+        const="checkpoint.pt",
+        default=None,
+        help="Save training state",
     )
     parser.add_argument(
-        "--input", "-i", default="checkpoint.pt", help="Input checkpoint file path"
+        "--load",
+        "-l",
+        nargs="?",
+        const="checkpoint.pt",
+        default=None,
+        help="Load training state",
     )
+
     args = parser.parse_args()
 
-    output_ckpt_path = Path(args.output)
-    input_ckpt_path = Path(args.input)
-
     cfg_path = args.config
+    input_ckpt = None
+    output_ckpt = None
     if cfg_path is not None:
         assert Path.exists(cfg_path), f"{cfg_path} does not exist"
         assert cfg_path.suffix == ".yaml", f"{cfg_path} must be a .yaml file"
-        config = parse_config(cfg_path)
+        with open(cfg_path, "r") as f:
+            cfg_dict = yaml.safe_load(f)
+        print(f"Starting training from config file: {cfg_path}")
+        if args.load is not None:
+            print(
+                "You have set passed a config file and also set --load! Loading from "
+                "checkpoint will be ignored."
+            )
     else:
         assert (
             args.load is not None
         ), "You need to either pass a config file or load from a checkpoint"
-        assert (
-            output_ckpt_path.suffix == ".pt"
-        ), f"{output_ckpt_path} must be a .pt file"
-        assert input_ckpt_path.suffix == ".pt", f"{input_ckpt_path} must be a .pt file"
+        input_ckpt = Path(args.load)
+        assert input_ckpt.suffix == ".pt", f"{input_ckpt} must be a .pt file"
 
-        checkpoint = torch.load(input_ckpt_path)
+        checkpoint = torch.load(input_ckpt)
         cfg_dict = checkpoint["config"]
-        if cfg_dict["model_type"] == "bigram":
-            config = BigramConfig(**cfg_dict)
-        elif cfg_dict["model_type"] == "attention":
-            config = AttentionConfig(**cfg_dict)
-        else:
-            raise NotImplementedError("Model type not yet implemented")
 
+    config = parse_config(cfg_dict)
     if args.iterations is not None:  # override number of iterations in config
         config.iterations = args.iterations
-    main(config, output_ckpt_path, args.save, args.load)
+
+    if args.save is not None:
+        output_ckpt = Path(args.save)
+        assert output_ckpt.suffix == ".pt", f"{output_ckpt} must be a .pt file"
+
+    main(config, output_ckpt, input_ckpt)

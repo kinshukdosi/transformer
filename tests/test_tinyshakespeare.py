@@ -8,6 +8,7 @@ import torch
 import math
 import train
 import pytest
+import yaml
 from pathlib import Path
 from data_loader import batch_data
 from tokenizer import Tokenizer
@@ -104,6 +105,8 @@ def test_train_bigram_model(config_file):
     """Test very short training on tinyshakespeare dataset"""
 
     cfg_path = CONFIG_DIR / config_file
-    cfg = parse_config(cfg_path)
+    with open(cfg_path, "r") as f:
+        cfg_dict = yaml.safe_load(f)
+    cfg = parse_config(cfg_dict)
     cfg.iterations = 500
     train.main(cfg)
