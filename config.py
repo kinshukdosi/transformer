@@ -1,10 +1,12 @@
 import torch
 from pathlib import Path
 from dataclasses import dataclass
+from tokenizer import BPETokenizer, SimpleTokenizer
 from models.bigram import BigramLanguageModel
 from models.attention import AttentionHeadLanguageModel
 from models.transformer import TransformerLanguageModel
 
+supported_tokenizers = ["bpe", "simple"]
 supported_models = ["bigram", "attention", "transformer"]
 supported_optimizers = ["AdamW"]
 
@@ -13,6 +15,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 @dataclass
 class BaseConfig:
+    tokenizer: str
     model_type: str
     vocab_size: int
     data_path: Path
@@ -103,3 +106,11 @@ def get_model_from_config(config: BaseConfig):
 
     model.to(device)
     return model
+
+
+def get_tokenizer_from_config(config: BaseConfig):
+    if config.tokenizer == "bpe":
+        return BPETokenizer()
+    elif config.tokenizer == "simple":
+        return SimpleTokenizer()
+    raise NameError("Tokenizer not found")

@@ -1,9 +1,3 @@
-"""
-Byte-pair encoding (BPE). Many modern LLMs use this algorithm to train their
-tokenizers. The idea is to replace the most common contiguous sequences of
-characters into new tokens until a vocabulary of a predefined size is obtained.
-"""
-
 import json
 from pathlib import Path
 
@@ -11,11 +5,43 @@ BYTE_RANGE = 256
 DATA_DIR = Path(__file__).parent / "data"
 
 
-class Tokenizer:
+class SimpleTokenizer:
+    """
+    The simple tokenizer that Karpathy implements in his video.
+    Effective for tinyshakespeare dataset
+    """
+
+    def __init__(self) -> None:
+        self.chars: list
+        self.vocab_size: int
+
+    def train(self, text, vocab_size=0):
+        # vocab_size input doesn't matter here, we have it so that all tokenizers can be
+        # trained by calling the same function. the actual vocab size will be derived
+        # from chars
+        self.chars = sorted(list(set(text)))
+        self.vocab_size = len(self.chars)
+        self.itos = {i: ch for i, ch in enumerate(self.chars)}
+        self.stoi = {ch: i for i, ch in enumerate(self.chars)}
+
+    def decode(self, ids: list) -> str:
+        return "".join([self.itos[i] for i in ids])
+
+    def encode(self, text: str) -> list:
+        return [self.stoi[c] for c in text]
+
+
+class BPETokenizer:
+    """
+    Byte-pair encoding (BPE). Many modern LLMs use this algorithm to train their
+    tokenizers. The idea is to replace the most common contiguous sequences of
+    characters into new tokens until a vocabulary of a predefined size is obtained.
+    """
 
     def __init__(self) -> None:
         self.merges: dict[tuple[int, int], int] = {}
         self.vocab: dict[int, bytes] = {}
+        self.vocab_size = 0
 
     def _replace(self, ids: list, pair: tuple[int, int], token_id: int) -> list:
         """Replaces given consecutive pair with new token id"""
@@ -41,6 +67,8 @@ class Tokenizer:
         assert (
             vocab_size > BYTE_RANGE
         ), "Desired vocabulary size must be greater than 256"
+
+        self.vocab_size = vocab_size
 
         text_bytes = text.encode("utf-8")  # convert to raw bytes
         ids = list(text_bytes)  # list of ints in range 0 to 255 (byte range)

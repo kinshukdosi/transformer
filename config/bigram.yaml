@@ -1,3 +1,5 @@
+tokenizer: simple
+
 # model parameters
 model_type: bigram
 vocab_size: 257

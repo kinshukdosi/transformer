@@ -11,7 +11,7 @@ import pytest
 import yaml
 from pathlib import Path
 from data_loader import batch_data
-from tokenizer import Tokenizer
+from tokenizer import BPETokenizer, SimpleTokenizer
 from train import parse_config
 from models.bigram import BigramLanguageModel
 
@@ -27,11 +27,12 @@ def get_tinyshakespeare_text() -> str:
     return text
 
 
-def test_tokenizer():
+@pytest.mark.parametrize(("tokenizer"), [BPETokenizer, SimpleTokenizer])
+def test_tokenizer(tokenizer):
     """Test tokenizer and basic encode/decode round trip"""
 
     text = get_tinyshakespeare_text()
-    tokenizer = Tokenizer()
+    tokenizer = tokenizer()
     vocab_size = 270
     input_text = "Hello World!"
 
@@ -46,24 +47,25 @@ def test_load_and_save_tokens():
     """Test tokenizer load and save functions"""
 
     text = get_tinyshakespeare_text()
-    tokenizer = Tokenizer()
+    tokenizer = BPETokenizer()
     vocab_size = 257
     path = DATA_DIR / "test_load_and_save.json"
 
     tokenizer.train(text, vocab_size)
     tokenizer.save(path)
-    tokenizer_readback = Tokenizer.load(path)
+    tokenizer_readback = BPETokenizer.load(path)
     path.unlink()
 
     assert tokenizer.vocab == tokenizer_readback.vocab
     assert tokenizer.merges == tokenizer_readback.merges
 
 
-def test_data_loader():
+@pytest.mark.parametrize(("tokenizer"), [BPETokenizer, SimpleTokenizer])
+def test_data_loader(tokenizer):
     """Test chunking up dataset for model training purposes"""
 
     text = get_tinyshakespeare_text()
-    tokenizer = Tokenizer()
+    tokenizer = tokenizer()
     vocab_size = 257
     batch_size = 10
     block_size = 20
@@ -77,11 +79,12 @@ def test_data_loader():
     assert targets.shape == (batch_size, block_size)
 
 
-def test_bigram_language_model():
+@pytest.mark.parametrize(("tokenizer"), [BPETokenizer, SimpleTokenizer])
+def test_bigram_language_model(tokenizer):
     """Test running forward pass on untrained bigram language model"""
 
     text = get_tinyshakespeare_text()
-    tokenizer = Tokenizer()
+    tokenizer = tokenizer()
     vocab_size = 257
     batch_size = 10
     block_size = 20
@@ -100,7 +103,9 @@ def test_bigram_language_model():
     assert logits.shape == (batch_size, block_size, vocab_size)
 
 
-@pytest.mark.parametrize(("config_file"), ["bigram.yaml", "attention.yaml"])
+@pytest.mark.parametrize(
+    ("config_file"), ["bigram.yaml", "attention.yaml", "transformer.yaml"]
+)
 def test_train_bigram_model(config_file):
     """Test very short training on tinyshakespeare dataset"""
 

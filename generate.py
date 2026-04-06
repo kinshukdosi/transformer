@@ -2,8 +2,11 @@ import torch
 import argparse
 import pathlib
 from pathlib import Path
-from tokenizer import Tokenizer
-from config import get_config_from_pytorch_model, get_model_from_config
+from config import (
+    get_config_from_pytorch_model,
+    get_model_from_config,
+    get_tokenizer_from_config,
+)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.serialization.add_safe_globals([pathlib.PosixPath])
@@ -21,7 +24,7 @@ def main(model_path: Path):
     with torch.no_grad():
         output = model.generate(context, num_tokens=500)
 
-    tokenizer = Tokenizer()
+    tokenizer = get_tokenizer_from_config(config)
     with open(config.data_path, "r") as f:
         text = f.read()
     tokenizer.train(text, config.vocab_size)

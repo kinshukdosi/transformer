@@ -5,15 +5,16 @@ import pathlib
 import dataclasses
 from pathlib import Path
 from typing import Optional
-from tokenizer import Tokenizer
 from data_loader import batch_data
 from config import (
     BaseConfig,
     parse_config,
+    supported_tokenizers,
     supported_models,
     supported_optimizers,
     get_config_from_pytorch_model,
     get_model_from_config,
+    get_tokenizer_from_config,
 )
 
 
@@ -28,8 +29,8 @@ def main(
     input_ckpt: Optional[Path] = None,
 ):
 
+    assert config.tokenizer in supported_tokenizers, "Tokenizer not supported"
     assert config.model_type in supported_models, "Model not supported"
-    assert config.vocab_size > 256, "Vocab size must be greater than 256"
     assert Path.exists(config.data_path), "Dataset doesn't exist"
     assert config.data_path.suffix == ".txt", "Dataset should be .txt file"
     assert config.train_split <= 1.0, "Training split should be less than 1"
@@ -37,10 +38,15 @@ def main(
     assert config.iterations >= 1, "Number of training iterations should be >= 1"
     assert config.optimizer in supported_optimizers, "Optimizer not supported"
 
-    tokenizer = Tokenizer()
+    tokenizer = get_tokenizer_from_config(config)
     with open(config.data_path, "r") as f:
         text = f.read()
     tokenizer.train(text, config.vocab_size)
+
+    if config.vocab_size != tokenizer.vocab_size:
+        print("Config/Tokenizer vocab size mismatch! Using tokenizer vocab size")
+        config.vocab_size = tokenizer.vocab_size
+
     text_encoded = torch.tensor(tokenizer.encode(text), dtype=torch.long)
 
     n = len(text_encoded)

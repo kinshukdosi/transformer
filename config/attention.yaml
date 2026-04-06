@@ -1,6 +1,8 @@
+tokenizer: simple
+
 # model parameters
 model_type: attention
-vocab_size: 257
+vocab_size: 65
 
 # data
 data_path: data/tinyshakespeare.txt
@@ -9,7 +11,7 @@ train_split: 0.9 # proportion of dataset to use for training, rest is for valid
 
 # training
 batch_size: 32
-iterations: 25000
+iterations: 2500
 
 # optimization
 optimizer: AdamW
