@@ -1,5 +1,5 @@
 # model parameters
-model_type: attention
+model_type: transformer
 vocab_size: 257
 
 # data
@@ -9,7 +9,7 @@ train_split: 0.9 # proportion of dataset to use for training, rest is for valid
 
 # training
 batch_size: 32
-iterations: 25000
+iterations: 10000
 
 # optimization
 optimizer: AdamW
@@ -20,6 +20,9 @@ eval_iterations: 100
 eval_interval: 500
 
 # attention head parameters
-n_embd: 128
-num_heads: 4
+n_embd: 32
+num_heads: 1
 dropout: 0.1
+
+# transformer specific parameters
+n_layers: 1

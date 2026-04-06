@@ -4,7 +4,9 @@ Focusing on understanding and documenting all steps <br>
 Resources: <br>
 ["Attention Is All You Need"](https://arxiv.org/abs/1706.03762) (2017) <br>
 Andrej Karpathy's ["Let's build GPT from scratch, in code, spelled out."](https://www.youtube.com/watch?v=kCc8FmEb1nY) <br>
-[minbpe](https://github.com/karpathy/minbpe)
+[minbpe](https://github.com/karpathy/minbpe) <br>
+["Layer Normalization"](https://arxiv.org/abs/1607.06450) (2016) <br>
+["Dropout: A Simple Way to Prevent Neural Networks from Overfitting"](https://www.cs.toronto.edu/~hinton/absps/JMLRdropout.pdf)<br>
 
 Requirements: Python 3.12
 
@@ -33,49 +35,25 @@ Uses Karpathy's tinyshakespeare dataset for now. <br>
 
 ## Models
 
+Example configs for all models can be found in `configs/`
+
 ### Bigram Language Model
 
 A simple model that predicts the next token given only the current token. It is essentially a lookup table with dimensions based on the vocabulary size of the dataset. Each row corresponds to a token and contains scores for the next token.
 [Implementation here.](models/bigram.py)
 
-#### Configuration
+### Attention Language Model
 
-| Setting       | Value           |
-| ------------- | --------------- |
-| Vocab Size    | 257             |
-| Dataset       | tinyshakespeare |
-| Batch Size    | 32              |
-| Iterations    | 25k             |
-| Learning Rate | 1e-3 (AdamW)    |
+Implemented in [models/attention.py](models/attention.py). This model uses multi-head attention, nothing else.
 
-#### Results
+### Transformer Language Model
+Model that implements the full transformer architecture as detailed in "Attention Is All You Need". Implemented in [models/transformer.py](models/transformer.py)
 
-| Metric          | Value |
-| --------------- | ----- |
-| Validation Loss | ~2.5  |
+### Language Model Comparison
 
----
+| Model Type     | Vocab Size | Dataset         | Batch Size | Iterations | Learning Rate | Block Size | Head Size | # Heads | Validation Loss |
+| -------------- | ---------- | --------------- | ---------- | ---------- | ------------- | ---------- | --------- | ------- | --------------- |
+| Bigram         | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | —          | —         | —       | ~2.5            |
+| Attention      | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | 16         | 32        | 1       | ~2.4            |
+| Attention      | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | 16         | 32        | 4       | ~2.1            |
 
-### Attention Model
-
-Implemented in [models/attention.py](models/attention.py). This model uses multi-head attention, nothing else. The configuration I used for the multi-head training can be found [here](config/attention.yaml)
-
-#### Configuration
-
-| Setting         | Value           |
-| --------------- | --------------- |
-| Vocab Size      | 257             |
-| Dataset         | tinyshakespeare |
-| Batch Size      | 32              |
-| Iterations      | 25k             |
-| Learning Rate   | 1e-3 (AdamW)    |
-| Block Size      | 16              |
-| Head Size       | 32              |
-| Number of Heads | 1 / 4           |
-
-#### Results
-
-| Model Variant | Validation Loss |
-| ------------- | --------------- |
-| Single Head   | ~2.4            |
-| 4 Heads       | ~2.1            |

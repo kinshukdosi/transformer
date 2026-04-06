@@ -9,6 +9,8 @@ chunks of data from there. Random sampling stabilises training.
 
 import torch
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 def batch_data(
     tokens: torch.Tensor, batch_size: int, block_size: int
@@ -26,4 +28,5 @@ def batch_data(
     inputs = torch.stack([tokens[i : i + block_size] for i in ix])
     targets = torch.stack([tokens[i + 1 : i + block_size + 1] for i in ix])
 
+    inputs, targets = inputs.to(device), targets.to(device)
     return inputs, targets

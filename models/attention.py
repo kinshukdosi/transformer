@@ -3,6 +3,8 @@ import torch.nn as nn
 from torch.nn import functional as F
 from typing import Optional
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 class SingleHeadAttention(nn.Module):
     """
@@ -10,7 +12,14 @@ class SingleHeadAttention(nn.Module):
     tokens before it, therefore learning more
     """
 
-    def __init__(self, n_embd: int, head_size: int, encoder: bool = False):
+    def __init__(
+        self,
+        n_embd: int,
+        head_size: int,
+        block_size: int,
+        dropout: float,
+        encoder: bool = False,
+    ):
         super().__init__()
 
         # model doesn't learn an additional bias
@@ -18,6 +27,11 @@ class SingleHeadAttention(nn.Module):
         self.key = nn.Linear(n_embd, head_size, bias=False)
         self.value = nn.Linear(n_embd, head_size, bias=False)
         self.head_size = head_size
+        self.dropout = nn.Dropout(dropout)
+
+        # we do this to tell pytorch this tensor is part of the model but is not a
+        # learnable parameter. it gets moved with the model.
+        self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)))
 
         # in "encoder" blocks of self-attention, we want all tokens to be able to attend
         # to each other, so we don't apply a mask with a triangular matrix
@@ -37,10 +51,10 @@ class SingleHeadAttention(nn.Module):
         attn /= self.head_size**0.5
 
         if not self.encoder:
-            tril = torch.tril(torch.ones(block_size, block_size))
-            attn = attn.masked_fill(tril == 0, float("-inf"))
+            attn = attn.masked_fill(self.tril == 0, float("-inf"))
 
         attn = F.softmax(attn, dim=-1)
+        attn = self.dropout(attn)  # dropout some neurons, prevents overfitting
 
         out = attn @ v
         return out
@@ -48,11 +62,25 @@ class SingleHeadAttention(nn.Module):
 
 class MultiHeadAttention(nn.Module):
     def __init__(
-        self, num_heads: int, n_embd: int, head_size: int, encoder: bool = False
+        self,
+        num_heads: int,
+        n_embd: int,
+        block_size: int,
+        dropout: float,
+        encoder: bool = False,
     ):
         super().__init__()
+
+        assert (
+            n_embd % num_heads == 0
+        ), "model dimension must be a multiple of num_heads"
+
+        head_size = n_embd // num_heads
         self.heads = nn.ModuleList(
-            [SingleHeadAttention(n_embd, head_size, encoder) for _ in range(num_heads)]
+            [
+                SingleHeadAttention(n_embd, head_size, block_size, dropout, encoder)
+                for _ in range(num_heads)
+            ]
         )
 
     def forward(self, inputs):
@@ -69,6 +97,7 @@ class AttentionHeadLanguageModel(nn.Module):
         n_embd: int,
         block_size: int,
         num_heads: int,
+        dropout: float,
     ):
         super().__init__()
 
@@ -78,9 +107,9 @@ class AttentionHeadLanguageModel(nn.Module):
         )  # encodes information about the position of tokens
 
         assert n_embd % num_heads == 0, "model dimension must be divisible by num_heads"
-        head_size = n_embd // num_heads
+
         self.attention_heads = MultiHeadAttention(
-            num_heads, n_embd, head_size
+            num_heads, n_embd, block_size, dropout
         )  # self-attention
 
         self.out_proj = nn.Linear(
@@ -94,7 +123,9 @@ class AttentionHeadLanguageModel(nn.Module):
         batch_size, block_size = inputs.shape
 
         tok_emb = self.token_emb_table(inputs)  # (batch_size, block_size, n_embd)
-        pos_emb = self.pos_emb_table(torch.arange(block_size))  # (block_size, n_embd)
+        pos_emb = self.pos_emb_table(
+            torch.arange(block_size, device=device)
+        )  # (block_size, n_embd)
 
         # combine token and positional information by broadcasting addition
         emb = tok_emb + pos_emb
