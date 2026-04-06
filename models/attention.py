@@ -31,6 +31,7 @@ class SingleHeadAttention(nn.Module):
 
         # we do this to tell pytorch this tensor is part of the model but is not a
         # learnable parameter. it gets moved with the model.
+        self.tril: torch.Tensor
         self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)))
 
         # in "encoder" blocks of self-attention, we want all tokens to be able to attend
@@ -51,7 +52,9 @@ class SingleHeadAttention(nn.Module):
         attn /= self.head_size**0.5
 
         if not self.encoder:
-            attn = attn.masked_fill(self.tril == 0, float("-inf"))
+            attn = attn.masked_fill(
+                self.tril[:block_size, :block_size] == 0, float("-inf")
+            )
 
         attn = F.softmax(attn, dim=-1)
         attn = self.dropout(attn)  # dropout some neurons, prevents overfitting
@@ -150,16 +153,15 @@ class AttentionHeadLanguageModel(nn.Module):
     def generate(self, inputs: torch.Tensor, num_tokens: int) -> torch.Tensor:
         """Generate num_tokens new tokens for each independent sequence (batch)"""
         batch_size, block_size = inputs.shape
-
-        # we need this here now because we now have positional embeddings, we can never
-        # have more than block_size tokens as an input. otherwise the table would run
-        # out of scope
-        inputs = inputs[:, -block_size:]
-
         output = inputs
 
         for _ in range(num_tokens):
-            logits, _ = self(output)
+
+            # we need this here now because we now have positional embeddings, we can
+            # never have more than block_size tokens as an input. otherwise the table
+            # would run out of scope
+            sliced = output[:, -block_size:]
+            logits, _ = self(sliced)
 
             logits = logits[:, -1, :]
             probabilities = F.softmax(logits, dim=-1)  # convert logits to probabilities

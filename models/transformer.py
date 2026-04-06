@@ -149,12 +149,15 @@ class TransformerLanguageModel(nn.Module):
     def generate(self, inputs: torch.Tensor, num_tokens: int) -> torch.Tensor:
         """Generate num_tokens new tokens for each independent sequence (batch)"""
         batch_size, block_size = inputs.shape
-
-        inputs = inputs[:, -block_size:]
         output = inputs
 
         for _ in range(num_tokens):
-            logits, _ = self(output)
+
+            # we need this here now because we now have positional embeddings, we can
+            # never have more than block_size tokens as an input. otherwise the table
+            # would run out of scope
+            sliced = output[:, -block_size:]
+            logits, _ = self(sliced)
 
             logits = logits[:, -1, :]
             probabilities = F.softmax(logits, dim=-1)  # convert logits to probabilities
