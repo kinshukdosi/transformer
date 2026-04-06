@@ -18,6 +18,14 @@ Run `pytest` from the root directory.
 Create a config.yaml file with your desired training parameters <br>
 Run `python train.py --config <path_to_config_file>`
 
+### To save training progress to a checkpoint
+`python train.py --config <path_to_config_file> --save` saves to `checkpoint.pt` by default <br>
+`python train.py --config <path_to_config_file> --save -o <output_checkpoint_path>` <br>
+
+### To load from a checkpoint
+`python train.py --load` loads from `checkpoint.pt` by default <br>
+`python train.py --load -i <input_checkpoint_path>` <br>
+
 ### Dataset and tokenization
 
 Uses Karpathy's tinyshakespeare dataset for now. <br>

@@ -1,6 +1,8 @@
 import argparse
 import yaml
 import torch
+import pathlib
+import dataclasses
 from pathlib import Path
 from dataclasses import dataclass
 from tokenizer import Tokenizer
@@ -10,6 +12,9 @@ from models.attention import AttentionHeadLanguageModel
 
 supported_models = ["bigram", "attention"]
 supported_optimizers = ["AdamW"]
+
+# so that we can load/save checkpoints that include configs with pathlib.Path
+torch.serialization.add_safe_globals([pathlib.PosixPath])
 
 
 @dataclass
@@ -71,7 +76,12 @@ def parse_config(cfg_path) -> BaseConfig:
         raise ValueError(f"Unknown model_type: {model_type}")
 
 
-def main(config: BaseConfig):
+def main(
+    config: BaseConfig,
+    output_ckpt: Path = Path("checkpoint.pt"),
+    save: bool = False,
+    load: bool = False,
+):
 
     assert config.model_type in supported_models, "Model not supported"
     assert config.vocab_size > 256, "Vocab size must be greater than 256"
@@ -87,6 +97,7 @@ def main(config: BaseConfig):
         text = f.read()
     tokenizer.train(text, config.vocab_size)
     text_encoded = torch.tensor(tokenizer.encode(text), dtype=torch.long)
+
     n = len(text_encoded)
     train_data = text_encoded[: int(n * config.train_split)]
     val_data = text_encoded[int(n * config.train_split) :]
@@ -112,6 +123,11 @@ def main(config: BaseConfig):
 
     if optim is None:
         raise TypeError("Optimizer is not set! Aborting")
+
+    if load:
+        checkpoint = torch.load(input_ckpt_path)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optim.load_state_dict(checkpoint["optimizer_state_dict"])
 
     # efficiency, telling pytorch we will never run backpropagation here
     @torch.no_grad()
@@ -139,17 +155,55 @@ def main(config: BaseConfig):
         loss.backward()
         optim.step()
 
+    if save:
+        checkpoint = {
+            "config": dataclasses.asdict(config),
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optim.state_dict(),
+        }
+        torch.save(checkpoint, output_ckpt)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--config", "-c", type=Path, help="Path to .yaml config file")
+    parser.add_argument("--save", "-s", action="store_true", help="Save training state")
+    parser.add_argument("--load", "-l", action="store_true", help="Load training state")
+    parser.add_argument("--iterations", type=int, help="Override number of iterations")
     parser.add_argument(
-        "--config", required=True, type=Path, help="Path to .yaml config file"
+        "--output", "-o", default="checkpoint.pt", help="Output checkpoint file path"
+    )
+    parser.add_argument(
+        "--input", "-i", default="checkpoint.pt", help="Input checkpoint file path"
     )
     args = parser.parse_args()
 
-    cfg_path = args.config
-    assert Path.exists(cfg_path), f"{cfg_path} does not exist"
-    assert cfg_path.suffix == ".yaml", f"{cfg_path} must be a .yaml file"
+    output_ckpt_path = Path(args.output)
+    input_ckpt_path = Path(args.input)
 
-    config = parse_config(cfg_path)
-    main(config)
+    cfg_path = args.config
+    if cfg_path is not None:
+        assert Path.exists(cfg_path), f"{cfg_path} does not exist"
+        assert cfg_path.suffix == ".yaml", f"{cfg_path} must be a .yaml file"
+        config = parse_config(cfg_path)
+    else:
+        assert (
+            args.load is not None
+        ), "You need to either pass a config file or load from a checkpoint"
+        assert (
+            output_ckpt_path.suffix == ".pt"
+        ), f"{output_ckpt_path} must be a .pt file"
+        assert input_ckpt_path.suffix == ".pt", f"{input_ckpt_path} must be a .pt file"
+
+        checkpoint = torch.load(input_ckpt_path)
+        cfg_dict = checkpoint["config"]
+        if cfg_dict["model_type"] == "bigram":
+            config = BigramConfig(**cfg_dict)
+        elif cfg_dict["model_type"] == "attention":
+            config = AttentionConfig(**cfg_dict)
+        else:
+            raise NotImplementedError("Model type not yet implemented")
+
+    if args.iterations is not None:  # override number of iterations in config
+        config.iterations = args.iterations
+    main(config, output_ckpt_path, args.save, args.load)
