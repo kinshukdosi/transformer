@@ -101,6 +101,7 @@ class TransformerLanguageModel(nn.Module):
 
         self.token_emb_table = nn.Embedding(vocab_size, n_embd)  # input embedding
         self.pos_emb_table = nn.Embedding(block_size, n_embd)  # positional encoding
+        self.block_size = block_size
 
         assert n_embd % num_heads == 0, "model dimension must be divisible by num_heads"
 
@@ -148,23 +149,22 @@ class TransformerLanguageModel(nn.Module):
 
     def generate(self, inputs: torch.Tensor, num_tokens: int) -> torch.Tensor:
         """Generate num_tokens new tokens for each independent sequence (batch)"""
-        batch_size, block_size = inputs.shape
-        output = inputs
+        batch_size, input_length = inputs.shape
 
         for _ in range(num_tokens):
 
             # we need this here now because we now have positional embeddings, we can
             # never have more than block_size tokens as an input. otherwise the table
             # would run out of scope
-            sliced = output[:, -block_size:]
+            sliced = inputs[:, -self.block_size :]
             logits, _ = self(sliced)
 
             logits = logits[:, -1, :]
             probabilities = F.softmax(logits, dim=-1)  # convert logits to probabilities
 
             # sample one new token per batch
-            next_tokens = torch.multinomial(probabilities, num_samples=1)
-            output = torch.cat((output, next_tokens), dim=1)  # append new token
+            next_token = torch.multinomial(probabilities, num_samples=1)
+            inputs = torch.cat((inputs, next_token), dim=1)  # append new token
 
-        assert output.shape == (batch_size, block_size + num_tokens)
-        return output
+        assert inputs.shape == (batch_size, input_length + num_tokens)
+        return inputs

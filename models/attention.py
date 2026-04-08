@@ -104,6 +104,7 @@ class AttentionHeadLanguageModel(nn.Module):
     ):
         super().__init__()
 
+        self.block_size = block_size
         self.token_emb_table = nn.Embedding(vocab_size, n_embd)
         self.pos_emb_table = nn.Embedding(
             block_size, n_embd
@@ -152,7 +153,7 @@ class AttentionHeadLanguageModel(nn.Module):
 
     def generate(self, inputs: torch.Tensor, num_tokens: int) -> torch.Tensor:
         """Generate num_tokens new tokens for each independent sequence (batch)"""
-        batch_size, block_size = inputs.shape
+        batch_size, input_length = inputs.shape
         output = inputs
 
         for _ in range(num_tokens):
@@ -160,7 +161,7 @@ class AttentionHeadLanguageModel(nn.Module):
             # we need this here now because we now have positional embeddings, we can
             # never have more than block_size tokens as an input. otherwise the table
             # would run out of scope
-            sliced = output[:, -block_size:]
+            sliced = output[:, -self.block_size :]
             logits, _ = self(sliced)
 
             logits = logits[:, -1, :]
@@ -170,5 +171,5 @@ class AttentionHeadLanguageModel(nn.Module):
             next_tokens = torch.multinomial(probabilities, num_samples=1)
             output = torch.cat((output, next_tokens), dim=1)  # append new token
 
-        assert output.shape == (batch_size, block_size + num_tokens)
+        assert output.shape == (batch_size, input_length + num_tokens)
         return output

@@ -1,4 +1,5 @@
 import json
+import argparse
 from pathlib import Path
 
 BYTE_RANGE = 256
@@ -7,7 +8,7 @@ DATA_DIR = Path(__file__).parent / "data"
 
 class SimpleTokenizer:
     """
-    The simple tokenizer that Karpathy implements in his video.
+    The simple character-level tokenizer that Karpathy implements in his video.
     Effective for tinyshakespeare dataset
     """
 
@@ -156,3 +157,24 @@ class BPETokenizer:
         tokenizer.merges = {(a, b): c for a, b, c in data["merges"]}
 
         return tokenizer
+
+
+if __name__ == "__main__":
+    """Tokenize text using BPE tokenizer and save to .json"""
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", "-i", type=Path, help="Path to input .txt file")
+    parser.add_argument("--output", "-o", type=Path, help="Path to output .json file")
+    parser.add_argument("--vocab_size", "-v", type=int, help="Vocab size")
+    args = parser.parse_args()
+
+    assert Path.exists(args.input), f"{args.input} does not exist"
+    assert args.input.suffix == ".txt", "Input file muxt be .txt file"
+    assert args.output.suffix == ".json", "Output file muxt be .json file"
+    assert type(args.vocab_size) is int, "Vocab size must be integer value"
+
+    tokenizer = BPETokenizer()
+    with open(args.input, "r") as f:
+        text = f.read()
+    tokenizer.train(text, args.vocab_size)
+    tokenizer.save(args.output)

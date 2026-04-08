@@ -95,7 +95,11 @@ def test_bigram_language_model(tokenizer):
 
     inputs, targets = batch_data(encoded, batch_size, block_size)
 
-    logits, loss = model(inputs, targets)
+    with torch.no_grad():
+        logits, loss = model(inputs, targets)
+
+    # negative log of (1 / vocab_size), because (1 / vocab_size is the probability for
+    # uniform distribution)
     expected_loss = math.log(vocab_size)
     rmse = math.sqrt((expected_loss - loss) ** 2)
 
