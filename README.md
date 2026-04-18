@@ -7,6 +7,7 @@ Andrej Karpathy's ["Let's build GPT from scratch, in code, spelled out."](https:
 [minbpe](https://github.com/karpathy/minbpe) <br>
 ["Layer Normalization"](https://arxiv.org/abs/1607.06450) (2016) <br>
 ["Dropout: A Simple Way to Prevent Neural Networks from Overfitting"](https://www.cs.toronto.edu/~hinton/absps/JMLRdropout.pdf)<br>
+["GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints"](https://arxiv.org/pdf/2305.13245)
 
 Requirements: Python 3.12
 

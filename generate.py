@@ -33,7 +33,7 @@ def main(model_path: Path, prompt: Optional[str]):
         seed = tokenizer.encode(prompt)
         context = torch.tensor([seed], dtype=torch.long, device=device)
     else:
-        context = torch.zeros((1, 1), dtype=torch.long)
+        context = torch.zeros((1, 1), dtype=torch.long, device=device)
 
     # disable gradients for memory and speed efficiency
     with torch.no_grad():

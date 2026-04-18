@@ -91,6 +91,107 @@ class MultiHeadAttention(nn.Module):
         return torch.cat([h(inputs) for h in self.heads], dim=-1)
 
 
+class GroupedQueryAttention(nn.Module):
+    """
+    Grouped Query Attention (GQA)
+    GQA divides query heads into groups, and each group shares a KV head
+    This speeds up inference massively compared to MHA
+
+    Ainslie et al., "GQA: Training Generalized Multi-Query Transformer Models
+    from Multi-Head Checkpoints", 2023. https://arxiv.org/abs/2305.13245
+    """
+
+    def __init__(
+        self,
+        num_heads: int,
+        n_embd: int,
+        block_size: int,
+        dropout: float,
+        encoder: bool = False,
+        group_size: int = 1,
+    ) -> None:
+        super().__init__()
+
+        assert n_embd % num_heads == 0
+        assert num_heads % group_size == 0
+
+        num_kv_heads = num_heads // group_size
+        self.head_size = n_embd // num_heads
+        self.group_size = group_size
+        self.num_heads = num_heads
+        self.num_kv_heads = num_kv_heads
+
+        self.query = nn.Linear(n_embd, num_heads * self.head_size, bias=False)
+        self.key = nn.Linear(n_embd, num_kv_heads * self.head_size, bias=False)
+        self.value = nn.Linear(n_embd, num_kv_heads * self.head_size, bias=False)
+        self.output = nn.Linear(num_heads * self.head_size, n_embd, bias=False)
+
+        self.dropout = nn.Dropout(dropout)
+
+        # we do this to tell pytorch this tensor is part of the model but is not a
+        # learnable parameter. it gets moved with the model.
+        self.tril: torch.Tensor
+        self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)))
+
+        # in "encoder" blocks of self-attention, we want all tokens to be able to attend
+        # to each other, so we don't apply a mask with a triangular matrix
+        self.encoder = encoder
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        batch_size, block_size, n_embd = inputs.shape
+
+        q = self.query(inputs)  # (batch_size, block_size, num_heads * head_size)
+        k = self.key(inputs)  # (batch_size, block_size, num_kv_heads * head_size)
+        v = self.value(inputs)  # (batch_size, block_size, num_kv_heads * head_size)
+
+        q = q.view(batch_size, block_size, self.num_heads, self.head_size).transpose(
+            1, 2
+        )  # (batch_size, num_heads, block_size, head_size)
+        k = k.view(batch_size, block_size, self.num_kv_heads, self.head_size).transpose(
+            1, 2
+        )  # (batch_size, num_kv_heads, block_size, head_size)
+        v = v.view(batch_size, block_size, self.num_kv_heads, self.head_size).transpose(
+            1, 2
+        )  # (batch_size, num_kv_heads, block_size, head_size)
+
+        # repeat KV heads to match query heads
+        k = self._repeat_kv(k, self.group_size)
+        v = self._repeat_kv(v, self.group_size)
+
+        scale = 1 / self.head_size**0.5
+        attn = (
+            q @ k.transpose(-2, -1) * scale
+        )  # (batch_size, num_heads, block_size, block_size)
+
+        if not self.encoder:
+            attn = attn.masked_fill(
+                self.tril[:block_size, :block_size] == 0, float("-inf")
+            )
+
+        attn = F.softmax(attn, dim=-1)
+        attn = self.dropout(attn)
+
+        out = attn @ v  # (batch_size, num_heads, block_size, head_size)
+
+        out = (
+            out.transpose(1, 2).contiguous().view(batch_size, block_size, -1)
+        )  # (batch_size, block_size, num_heads * head_size)
+
+        return self.output(out)
+
+    @staticmethod
+    def _repeat_kv(x: torch.Tensor, num_repeats: int) -> torch.Tensor:
+        # in: (batch_size, num_kv_heads, block_size, head_dim)
+        # out: (batch_size, num_kv_heads * num_repeats, block_size, head_dim)
+        if num_repeats == 1:
+            return x
+        batch_size, num_kv_heads, block_size, head_dim = x.shape
+        x = x.unsqueeze(2).expand(
+            batch_size, num_kv_heads, num_repeats, block_size, head_dim
+        )
+        return x.reshape(batch_size, num_kv_heads * num_repeats, block_size, head_dim)
+
+
 class AttentionHeadLanguageModel(nn.Module):
     """Simple language model with only self-attention heads"""
 

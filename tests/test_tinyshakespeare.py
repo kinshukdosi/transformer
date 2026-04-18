@@ -19,6 +19,8 @@ TEST_DIR = Path(__file__).parent
 DATA_DIR = TEST_DIR.parent / "data"
 CONFIG_DIR = TEST_DIR.parent / "config"
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 def get_tinyshakespeare_text() -> str:
     """Helper function for tests"""
@@ -89,6 +91,7 @@ def test_bigram_language_model(tokenizer):
     batch_size = 10
     block_size = 20
     model = BigramLanguageModel(vocab_size)
+    model = model.to(device)
 
     tokenizer.train(text, vocab_size)
     encoded = torch.tensor(tokenizer.encode(text))
