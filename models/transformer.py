@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional
-from models.attention import GroupedQueryAttention
+from models.attention import Attention
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -63,7 +63,7 @@ class TransformerBlock(nn.Module):
     ):
         super().__init__()
 
-        self.attention_heads = GroupedQueryAttention(
+        self.attention_heads = Attention(
             num_heads, n_embd, block_size, dropout, encoder, group_size
         )
         self.feed_forward = FeedForward(n_embd, dropout)
@@ -97,6 +97,7 @@ class TransformerLanguageModel(nn.Module):
         num_heads: int,
         n_layers: int,
         dropout: float,
+        group_size: int,
     ):
         super().__init__()
 
@@ -108,7 +109,9 @@ class TransformerLanguageModel(nn.Module):
 
         self.transformer_blocks = nn.Sequential(
             *[
-                TransformerBlock(n_embd, num_heads, block_size, dropout)
+                TransformerBlock(
+                    n_embd, num_heads, block_size, dropout, group_size=group_size
+                )
                 for _ in range(n_layers)
             ]
         )

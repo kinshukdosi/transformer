@@ -6,94 +6,14 @@ from typing import Optional
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-class SingleHeadAttention(nn.Module):
+class Attention(nn.Module):
     """
-    Single layer, single self-attention head. Allows a token to attend to all of the
-    tokens before it, therefore learning more
-    """
+    Forms of self-attention:
 
-    def __init__(
-        self,
-        n_embd: int,
-        head_size: int,
-        block_size: int,
-        dropout: float,
-        encoder: bool = False,
-    ):
-        super().__init__()
+    Multi-Head Attention (set group_size to 1, num_heads == num_kv_heads)
+    Multi-Query Attention (set group_size to num_heads, num_kv_heads = 1)
+    Grouped Query Attention (set group_size > 1, num_kv_heads = num_heads // group_size)
 
-        # model doesn't learn an additional bias
-        self.query = nn.Linear(n_embd, head_size, bias=False)
-        self.key = nn.Linear(n_embd, head_size, bias=False)
-        self.value = nn.Linear(n_embd, head_size, bias=False)
-        self.head_size = head_size
-        self.dropout = nn.Dropout(dropout)
-
-        # we do this to tell pytorch this tensor is part of the model but is not a
-        # learnable parameter. it gets moved with the model.
-        self.tril: torch.Tensor
-        self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)))
-
-        # in "encoder" blocks of self-attention, we want all tokens to be able to attend
-        # to each other, so we don't apply a mask with a triangular matrix
-        self.encoder = encoder
-
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        batch_size, block_size, n_embd = inputs.shape
-
-        q = self.query(inputs)  # (batch_size, block_size, head_size)
-        k = self.key(inputs)  # (batch_size, block_size, head_size)
-        v = self.value(inputs)  # (batch_size, block_size, head_size)
-
-        attn = q @ k.transpose(-2, -1)  # (batch_size, block_size, block_size)
-
-        # attn scores can become large here, which can mess up the softmax. dividing by
-        # the square root of the head size here brings the variance back to 1
-        attn /= self.head_size**0.5
-
-        if not self.encoder:
-            attn = attn.masked_fill(
-                self.tril[:block_size, :block_size] == 0, float("-inf")
-            )
-
-        attn = F.softmax(attn, dim=-1)
-        attn = self.dropout(attn)  # dropout some neurons, prevents overfitting
-
-        out = attn @ v
-        return out
-
-
-class MultiHeadAttention(nn.Module):
-    def __init__(
-        self,
-        num_heads: int,
-        n_embd: int,
-        block_size: int,
-        dropout: float,
-        encoder: bool = False,
-    ):
-        super().__init__()
-
-        assert (
-            n_embd % num_heads == 0
-        ), "model dimension must be a multiple of num_heads"
-
-        head_size = n_embd // num_heads
-        self.heads = nn.ModuleList(
-            [
-                SingleHeadAttention(n_embd, head_size, block_size, dropout, encoder)
-                for _ in range(num_heads)
-            ]
-        )
-
-    def forward(self, inputs):
-        # concatenating over the head_size dimension
-        return torch.cat([h(inputs) for h in self.heads], dim=-1)
-
-
-class GroupedQueryAttention(nn.Module):
-    """
-    Grouped Query Attention (GQA)
     GQA divides query heads into groups, and each group shares a KV head
     This speeds up inference massively compared to MHA
 
@@ -131,7 +51,9 @@ class GroupedQueryAttention(nn.Module):
         # we do this to tell pytorch this tensor is part of the model but is not a
         # learnable parameter. it gets moved with the model.
         self.tril: torch.Tensor
-        self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)))
+        self.register_buffer(
+            "tril", torch.tril(torch.ones(block_size, block_size)), persistent=False
+        )
 
         # in "encoder" blocks of self-attention, we want all tokens to be able to attend
         # to each other, so we don't apply a mask with a triangular matrix
@@ -202,6 +124,7 @@ class AttentionHeadLanguageModel(nn.Module):
         block_size: int,
         num_heads: int,
         dropout: float,
+        group_size: int = 1,
     ):
         super().__init__()
 
@@ -213,8 +136,8 @@ class AttentionHeadLanguageModel(nn.Module):
 
         assert n_embd % num_heads == 0, "model dimension must be divisible by num_heads"
 
-        self.attention_heads = MultiHeadAttention(
-            num_heads, n_embd, block_size, dropout
+        self.attention_heads = Attention(
+            num_heads, n_embd, block_size, dropout, group_size=group_size
         )  # self-attention
 
         self.out_proj = nn.Linear(

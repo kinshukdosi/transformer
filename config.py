@@ -39,6 +39,7 @@ class AttentionConfig(BaseConfig):
     n_embd: int
     num_heads: int
     dropout: float
+    group_size: int
 
 
 @dataclass
@@ -89,6 +90,7 @@ def get_model_from_config(config: BaseConfig):
             config.block_size,
             config.num_heads,
             config.dropout,
+            config.group_size,
         )
     elif config.model_type == "transformer":
         assert isinstance(config, TransformerConfig)
@@ -99,6 +101,7 @@ def get_model_from_config(config: BaseConfig):
             config.num_heads,
             config.n_layers,
             config.dropout,
+            config.group_size,
         )
 
     if model is None:

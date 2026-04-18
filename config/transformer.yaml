@@ -25,6 +25,7 @@ eval_interval: 500
 n_embd: 32
 num_heads: 1
 dropout: 0.1
+group_size: 1
 
 # transformer specific parameters
 n_layers: 1
