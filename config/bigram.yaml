@@ -6,7 +6,7 @@ vocab_size: 257
 
 # data
 data_path: data/tinyshakespeare.txt
-block_size: 1
+max_seq_len: 1
 train_split: 0.9 # proportion of dataset to use for training, rest is for validation
 
 # training

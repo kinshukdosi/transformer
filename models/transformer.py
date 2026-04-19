@@ -1,6 +1,6 @@
 """We now want to replicate the proper transformer architecture, as detailed in paper
 Attention Is All You Need. This model adds Feed Forward, Layer Normalization and
-Dropout, as well as the multi-head attention from before"""
+Dropout as well"""
 
 import torch
 import torch.nn as nn
@@ -56,15 +56,20 @@ class TransformerBlock(nn.Module):
         self,
         n_embd: int,
         num_heads: int,
-        block_size: int,
+        max_seq_len: int,
         dropout: float,
         encoder: bool = False,
         group_size: int = 1,
     ):
         super().__init__()
 
-        self.attention_heads = Attention(
-            num_heads, n_embd, block_size, dropout, encoder, group_size
+        self.attention = Attention(
+            num_heads=num_heads,
+            n_embd=n_embd,
+            max_seq_len=max_seq_len,
+            dropout=dropout,
+            encoder=encoder,
+            group_size=group_size,
         )
         self.feed_forward = FeedForward(n_embd, dropout)
         self.layer_norm1 = nn.LayerNorm(n_embd)  # this LayerNorm follows attention
@@ -76,7 +81,7 @@ class TransformerBlock(nn.Module):
         # attention/feedforward components. this implementation has changed since then,
         # as it has been found that applying the layernorm before means we can train
         # models fast, and they become easier to optimize using larger learning rates
-        att_out = inputs + self.layer_norm1(self.attention_heads(inputs))
+        att_out = inputs + self.layer_norm1(self.attention(inputs))
         ff_out = att_out + self.layer_norm2(self.feed_forward(att_out))
 
         return ff_out
@@ -93,7 +98,7 @@ class TransformerLanguageModel(nn.Module):
         self,
         vocab_size: int,
         n_embd: int,
-        block_size: int,
+        max_seq_len: int,
         num_heads: int,
         n_layers: int,
         dropout: float,
@@ -102,15 +107,19 @@ class TransformerLanguageModel(nn.Module):
         super().__init__()
 
         self.token_emb_table = nn.Embedding(vocab_size, n_embd)  # input embedding
-        self.pos_emb_table = nn.Embedding(block_size, n_embd)  # positional encoding
-        self.block_size = block_size
+        self.pos_emb_table = nn.Embedding(max_seq_len, n_embd)  # positional encoding
+        self.max_seq_len = max_seq_len
 
         assert n_embd % num_heads == 0, "model dimension must be divisible by num_heads"
 
         self.transformer_blocks = nn.Sequential(
             *[
                 TransformerBlock(
-                    n_embd, num_heads, block_size, dropout, group_size=group_size
+                    n_embd=n_embd,
+                    num_heads=num_heads,
+                    max_seq_len=max_seq_len,
+                    dropout=dropout,
+                    group_size=group_size,
                 )
                 for _ in range(n_layers)
             ]
@@ -124,43 +133,43 @@ class TransformerLanguageModel(nn.Module):
         self, inputs: torch.Tensor, targets: Optional[torch.Tensor] = None
     ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
 
-        batch_size, block_size = inputs.shape
+        batch_size, seq_len = inputs.shape
 
-        tok_emb = self.token_emb_table(inputs)  # (batch_size, block_size, n_embd)
+        tok_emb = self.token_emb_table(inputs)  # (batch_size, seq_len, n_embd)
         pos_emb = self.pos_emb_table(
-            torch.arange(block_size, device=device)
-        )  # (block_size, n_embd)
+            torch.arange(seq_len, device=device)
+        )  # (seq_len, n_embd)
 
         # combine token and positional information by broadcasting addition
         emb = tok_emb + pos_emb
         emb = self.transformer_blocks(emb)  #  apply all transformer blocks
 
         # project back up to vocab_size
-        logits = self.out_proj(emb)  # (batch_size, block_size, vocab_size)
+        logits = self.out_proj(emb)  # (batch_size, seq_len, vocab_size)
 
         loss = None
         if targets is not None:
             # same logic as in bigram model
             assert inputs.shape == targets.shape, "inputs/targets shape mismatch"
-            batch_size, block_size, vocab_size = logits.shape
+            batch_size, seq_len, vocab_size = logits.shape
 
             loss = F.cross_entropy(
-                logits.view(batch_size * block_size, vocab_size),
-                targets.view(batch_size * block_size),
+                logits.view(batch_size * seq_len, vocab_size),
+                targets.view(batch_size * seq_len),
             )
 
         return logits, loss
 
     def generate(self, inputs: torch.Tensor, num_tokens: int) -> torch.Tensor:
         """Generate num_tokens new tokens for each independent sequence (batch)"""
-        batch_size, input_length = inputs.shape
+        batch_size, seq_len = inputs.shape
 
         for _ in range(num_tokens):
 
             # we need this here now because we now have positional embeddings, we can
-            # never have more than block_size tokens as an input. otherwise the table
+            # never have more than max_seq_len tokens as an input. otherwise the table
             # would run out of scope
-            sliced = inputs[:, -self.block_size :]
+            sliced = inputs[:, -self.max_seq_len :]
             logits, _ = self(sliced)
 
             logits = logits[:, -1, :]
@@ -170,5 +179,5 @@ class TransformerLanguageModel(nn.Module):
             next_token = torch.multinomial(probabilities, num_samples=1)
             inputs = torch.cat((inputs, next_token), dim=1)  # append new token
 
-        assert inputs.shape == (batch_size, input_length + num_tokens)
+        assert inputs.shape == (batch_size, seq_len + num_tokens)
         return inputs

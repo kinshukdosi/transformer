@@ -45,16 +45,16 @@ A simple model that predicts the next token given only the current token. It is 
 
 ### Attention Language Model
 
-Implemented in [models/attention.py](models/attention.py). This model uses multi-head attention, nothing else.
+Implemented in [models/attention.py](models/attention.py). This model uses a single layer of attention to learn, nothing else.
 
 ### Transformer Language Model
 Model that implements the full transformer architecture as detailed in "Attention Is All You Need". Implemented in [models/transformer.py](models/transformer.py)
 
 ### Language Model Comparison
 
-| Model Type     | Vocab Size | Dataset         | Batch Size | Iterations | Learning Rate | Block Size | Head Size | # Heads | Validation Loss |
-| -------------- | ---------- | --------------- | ---------- | ---------- | ------------- | ---------- | --------- | ------- | --------------- |
-| Bigram         | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | —          | —         | —       | ~2.5            |
-| Attention      | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | 16         | 32        | 1       | ~2.4            |
-| Attention      | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | 16         | 32        | 4       | ~2.1            |
+| Model Type     | Vocab Size | Dataset         | Batch Size | Iterations | Learning Rate | Max Sequence Length | Head Size | # Heads | Validation Loss |
+| -------------- | ---------- | --------------- | ---------- | ---------- | ------------- | --------------------| --------- | ------- | --------------- |
+| Bigram         | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | —                   | —         | —       | ~2.5            |
+| Attention      | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | 16                  | 32        | 1       | ~2.4            |
+| Attention      | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | 16                  | 32        | 4       | ~2.1            |
 

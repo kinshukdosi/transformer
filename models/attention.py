@@ -25,7 +25,7 @@ class Attention(nn.Module):
         self,
         num_heads: int,
         n_embd: int,
-        block_size: int,
+        max_seq_len: int,
         dropout: float,
         encoder: bool = False,
         group_size: int = 1,
@@ -52,7 +52,7 @@ class Attention(nn.Module):
         # learnable parameter. it gets moved with the model.
         self.tril: torch.Tensor
         self.register_buffer(
-            "tril", torch.tril(torch.ones(block_size, block_size)), persistent=False
+            "tril", torch.tril(torch.ones(max_seq_len, max_seq_len)), persistent=False
         )
 
         # in "encoder" blocks of self-attention, we want all tokens to be able to attend
@@ -60,21 +60,21 @@ class Attention(nn.Module):
         self.encoder = encoder
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        batch_size, block_size, n_embd = inputs.shape
+        batch_size, seq_len, n_embd = inputs.shape
 
-        q = self.query(inputs)  # (batch_size, block_size, num_heads * head_size)
-        k = self.key(inputs)  # (batch_size, block_size, num_kv_heads * head_size)
-        v = self.value(inputs)  # (batch_size, block_size, num_kv_heads * head_size)
+        q = self.query(inputs)  # (batch_size, seq_len, num_heads * head_size)
+        k = self.key(inputs)  # (batch_size, seq_len, num_kv_heads * head_size)
+        v = self.value(inputs)  # (batch_size, seq_len, num_kv_heads * head_size)
 
-        q = q.view(batch_size, block_size, self.num_heads, self.head_size).transpose(
+        q = q.view(batch_size, seq_len, self.num_heads, self.head_size).transpose(
             1, 2
-        )  # (batch_size, num_heads, block_size, head_size)
-        k = k.view(batch_size, block_size, self.num_kv_heads, self.head_size).transpose(
+        )  # (batch_size, num_heads, seq_len, head_size)
+        k = k.view(batch_size, seq_len, self.num_kv_heads, self.head_size).transpose(
             1, 2
-        )  # (batch_size, num_kv_heads, block_size, head_size)
-        v = v.view(batch_size, block_size, self.num_kv_heads, self.head_size).transpose(
+        )  # (batch_size, num_kv_heads, seq_len, head_size)
+        v = v.view(batch_size, seq_len, self.num_kv_heads, self.head_size).transpose(
             1, 2
-        )  # (batch_size, num_kv_heads, block_size, head_size)
+        )  # (batch_size, num_kv_heads, seq_len, head_size)
 
         # repeat KV heads to match query heads
         k = self._repeat_kv(k, self.group_size)
@@ -83,35 +83,33 @@ class Attention(nn.Module):
         scale = 1 / self.head_size**0.5
         attn = (
             q @ k.transpose(-2, -1) * scale
-        )  # (batch_size, num_heads, block_size, block_size)
+        )  # (batch_size, num_heads, seq_len, seq_len)
 
         if not self.encoder:
-            attn = attn.masked_fill(
-                self.tril[:block_size, :block_size] == 0, float("-inf")
-            )
+            attn = attn.masked_fill(self.tril[:seq_len, :seq_len] == 0, float("-inf"))
 
         attn = F.softmax(attn, dim=-1)
         attn = self.dropout(attn)
 
-        out = attn @ v  # (batch_size, num_heads, block_size, head_size)
+        out = attn @ v  # (batch_size, num_heads, seq_len, head_size)
 
         out = (
-            out.transpose(1, 2).contiguous().view(batch_size, block_size, -1)
-        )  # (batch_size, block_size, num_heads * head_size)
+            out.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
+        )  # (batch_size, seq_len, num_heads * head_size)
 
         return self.output(out)
 
     @staticmethod
     def _repeat_kv(x: torch.Tensor, num_repeats: int) -> torch.Tensor:
-        # in: (batch_size, num_kv_heads, block_size, head_dim)
-        # out: (batch_size, num_kv_heads * num_repeats, block_size, head_dim)
+        # in: (batch_size, num_kv_heads, seq_len , head_dim)
+        # out: (batch_size, num_kv_heads * num_repeats, seq_len, head_dim)
         if num_repeats == 1:
             return x
-        batch_size, num_kv_heads, block_size, head_dim = x.shape
+        batch_size, num_kv_heads, seq_len, head_dim = x.shape
         x = x.unsqueeze(2).expand(
-            batch_size, num_kv_heads, num_repeats, block_size, head_dim
+            batch_size, num_kv_heads, num_repeats, seq_len, head_dim
         )
-        return x.reshape(batch_size, num_kv_heads * num_repeats, block_size, head_dim)
+        return x.reshape(batch_size, num_kv_heads * num_repeats, seq_len, head_dim)
 
 
 class AttentionHeadLanguageModel(nn.Module):
@@ -121,23 +119,27 @@ class AttentionHeadLanguageModel(nn.Module):
         self,
         vocab_size: int,
         n_embd: int,
-        block_size: int,
+        max_seq_len: int,
         num_heads: int,
         dropout: float,
         group_size: int = 1,
     ):
         super().__init__()
 
-        self.block_size = block_size
+        self.max_seq_len = max_seq_len
         self.token_emb_table = nn.Embedding(vocab_size, n_embd)
         self.pos_emb_table = nn.Embedding(
-            block_size, n_embd
+            max_seq_len, n_embd
         )  # encodes information about the position of tokens
 
         assert n_embd % num_heads == 0, "model dimension must be divisible by num_heads"
 
-        self.attention_heads = Attention(
-            num_heads, n_embd, block_size, dropout, group_size=group_size
+        self.attention = Attention(
+            num_heads=num_heads,
+            n_embd=n_embd,
+            max_seq_len=max_seq_len,
+            dropout=dropout,
+            group_size=group_size,
         )  # self-attention
 
         self.out_proj = nn.Linear(
@@ -148,44 +150,44 @@ class AttentionHeadLanguageModel(nn.Module):
         self, inputs: torch.Tensor, targets: Optional[torch.Tensor] = None
     ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
 
-        batch_size, block_size = inputs.shape
+        batch_size, seq_len = inputs.shape
 
-        tok_emb = self.token_emb_table(inputs)  # (batch_size, block_size, n_embd)
+        tok_emb = self.token_emb_table(inputs)  # (batch_size, seq_len, n_embd)
         pos_emb = self.pos_emb_table(
-            torch.arange(block_size, device=device)
-        )  # (block_size, n_embd)
+            torch.arange(seq_len, device=device)
+        )  # (seq_len, n_embd)
 
         # combine token and positional information by broadcasting addition
         emb = tok_emb + pos_emb
-        emb = self.attention_heads(emb)  # apply self attention
+        emb = self.attention(emb)  # apply self attention
 
         # project back up to vocab_size
-        logits = self.out_proj(emb)  # (batch_size, block_size, vocab_size)
+        logits = self.out_proj(emb)  # (batch_size, seq_len, vocab_size)
 
         loss = None
         if targets is not None:
             # same logic as in bigram model
             assert inputs.shape == targets.shape, "inputs/targets shape mismatch"
-            batch_size, block_size, vocab_size = logits.shape
+            batch_size, seq_len, vocab_size = logits.shape
 
             loss = F.cross_entropy(
-                logits.view(batch_size * block_size, vocab_size),
-                targets.view(batch_size * block_size),
+                logits.view(batch_size * seq_len, vocab_size),
+                targets.view(batch_size * seq_len),
             )
 
         return logits, loss
 
     def generate(self, inputs: torch.Tensor, num_tokens: int) -> torch.Tensor:
         """Generate num_tokens new tokens for each independent sequence (batch)"""
-        batch_size, input_length = inputs.shape
+        batch_size, seq_len = inputs.shape
         output = inputs
 
         for _ in range(num_tokens):
 
             # we need this here now because we now have positional embeddings, we can
-            # never have more than block_size tokens as an input. otherwise the table
+            # never have more than max_seq_len tokens as an input. otherwise the table
             # would run out of scope
-            sliced = output[:, -self.block_size :]
+            sliced = output[:, -self.max_seq_len :]
             logits, _ = self(sliced)
 
             logits = logits[:, -1, :]
@@ -195,5 +197,5 @@ class AttentionHeadLanguageModel(nn.Module):
             next_tokens = torch.multinomial(probabilities, num_samples=1)
             output = torch.cat((output, next_tokens), dim=1)  # append new token
 
-        assert output.shape == (batch_size, input_length + num_tokens)
+        assert output.shape == (batch_size, seq_len + num_tokens)
         return output

@@ -70,15 +70,15 @@ def test_data_loader(tokenizer):
     tokenizer = tokenizer()
     vocab_size = 257
     batch_size = 10
-    block_size = 20
+    max_seq_len = 20
 
     tokenizer.train(text, vocab_size)
     encoded = torch.tensor(tokenizer.encode(text))  # batch_data() expects torch.Tensor
 
-    inputs, targets = batch_data(encoded, batch_size, block_size)
+    inputs, targets = batch_data(encoded, batch_size, max_seq_len)
 
-    assert inputs.shape == (batch_size, block_size)
-    assert targets.shape == (batch_size, block_size)
+    assert inputs.shape == (batch_size, max_seq_len)
+    assert targets.shape == (batch_size, max_seq_len)
 
 
 @pytest.mark.parametrize(("tokenizer"), [BPETokenizer, SimpleTokenizer])
@@ -89,14 +89,14 @@ def test_bigram_language_model(tokenizer):
     tokenizer = tokenizer()
     vocab_size = 257
     batch_size = 10
-    block_size = 20
+    max_seq_len = 20
     model = BigramLanguageModel(vocab_size)
     model = model.to(device)
 
     tokenizer.train(text, vocab_size)
     encoded = torch.tensor(tokenizer.encode(text))
 
-    inputs, targets = batch_data(encoded, batch_size, block_size)
+    inputs, targets = batch_data(encoded, batch_size, max_seq_len)
 
     with torch.no_grad():
         logits, loss = model(inputs, targets)
@@ -107,7 +107,7 @@ def test_bigram_language_model(tokenizer):
     rmse = math.sqrt((expected_loss - loss) ** 2)
 
     assert rmse < 1, "loss too far from expected"
-    assert logits.shape == (batch_size, block_size, vocab_size)
+    assert logits.shape == (batch_size, max_seq_len, vocab_size)
 
 
 @pytest.mark.parametrize(

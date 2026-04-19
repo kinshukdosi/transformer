@@ -74,7 +74,7 @@ def main(
         model.eval()
         losses = torch.zeros(config.eval_iterations)
         for i in range(config.eval_iterations):
-            inputs, targets = batch_data(data, config.batch_size, config.block_size)
+            inputs, targets = batch_data(data, config.batch_size, config.max_seq_len)
             _, loss = model(inputs, targets)  # logits don't matter here
             losses[i] = loss.item()
         model.train()
@@ -88,7 +88,7 @@ def main(
                 f"Step {i}: Training loss = {train_loss}, Validation loss = {val_loss}"
             )
 
-        inputs, targets = batch_data(train_data, config.batch_size, config.block_size)
+        inputs, targets = batch_data(train_data, config.batch_size, config.max_seq_len)
         _, loss = model(inputs, targets)
         optim.zero_grad()
         loss.backward()

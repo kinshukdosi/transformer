@@ -19,7 +19,7 @@ class BaseConfig:
     model_type: str
     vocab_size: int
     data_path: Path
-    block_size: int
+    max_seq_len: int  # upper bound on how many tokens a model can attend to at once
     train_split: float
     batch_size: int
     iterations: int
@@ -79,15 +79,18 @@ def get_model_from_config(config: BaseConfig):
     model = None
     if config.model_type == "bigram":
         assert isinstance(config, BigramConfig)
-        # block size = 1 because bigram only looks at previous token
-        assert config.block_size == 1, "Block size should be 1 for bigram model"
+        # max_seq_len = 1 because bigram only looks at previous token
+        assert (
+            config.max_seq_len == 1
+        ), "Max sequence length should be 1 for bigram model"
+
         model = BigramLanguageModel(config.vocab_size)
     elif config.model_type == "attention":
         assert isinstance(config, AttentionConfig)
         model = AttentionHeadLanguageModel(
             config.vocab_size,
             config.n_embd,
-            config.block_size,
+            config.max_seq_len,
             config.num_heads,
             config.dropout,
             config.group_size,
@@ -97,7 +100,7 @@ def get_model_from_config(config: BaseConfig):
         model = TransformerLanguageModel(
             config.vocab_size,
             config.n_embd,
-            config.block_size,
+            config.max_seq_len,
             config.num_heads,
             config.n_layers,
             config.dropout,

@@ -17,6 +17,7 @@ class BigramLanguageModel(nn.Module):
         # because each row has the scores for the ENTIRE vocabulary. the embedding here
         # is the entire prediction table for the model
         self.embedding = nn.Embedding(vocab_size, vocab_size)
+        self.max_seq_len = 1  # bigram model can only attend to one token, the prev one
 
     # we don't need to call forward() directly because we inherit from nn.Module. Since
     # __call__() wraps forward(), we can call the model object like a function instead
@@ -26,14 +27,14 @@ class BigramLanguageModel(nn.Module):
 
         # this is the forward computation! for each input token, it retrieves the
         # corresponding row from the embedding matrix. so the output shape of logits
-        # here is (batch_size, block_size, vocab_size)
+        # here is (batch_size, seq_len, vocab_size)
         logits = self.embedding(inputs)
 
         loss = None
 
         if targets is not None:
             assert inputs.shape == targets.shape, "inputs/targets shape mismatch"
-            batch_size, block_size, vocab_size = logits.shape
+            batch_size, seq_len, vocab_size = logits.shape
 
             # loss calculation. this function does a few things: softmax on the logits
             # to convert them to probabilities, then take the natural log, then negate
@@ -43,15 +44,15 @@ class BigramLanguageModel(nn.Module):
             # token to be 1/vocab_size, so we expect the loss to be ln(vocab_size)
 
             loss = F.cross_entropy(
-                logits.view(batch_size * block_size, vocab_size),
-                targets.view(batch_size * block_size),
+                logits.view(batch_size * seq_len, vocab_size),
+                targets.view(batch_size * seq_len),
             )
 
         return logits, loss
 
     def generate(self, inputs: torch.Tensor, num_tokens: int) -> torch.Tensor:
         """Generate num_tokens new tokens for each independent sequence (batch)"""
-        batch_size, block_size = inputs.shape
+        batch_size, seq_len = inputs.shape
         output = inputs
 
         for _ in range(num_tokens):
@@ -60,12 +61,12 @@ class BigramLanguageModel(nn.Module):
             # only consider logits for last token, because this is how the bigram model
             # works. more complicated models will look at more previous tokens to make
             # more accurate predictions
-            logits = logits[:, -1, :]
+            logits = logits[:, -self.max_seq_len, :]
             probabilities = F.softmax(logits, dim=-1)  # convert logits to probabilities
 
             # sample one new token per batch
             next_tokens = torch.multinomial(probabilities, num_samples=1)
             output = torch.cat((output, next_tokens), dim=1)  # append new token
 
-        assert output.shape == (batch_size, block_size + num_tokens)
+        assert output.shape == (batch_size, seq_len + num_tokens)
         return output
