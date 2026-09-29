@@ -19,15 +19,38 @@ Run `pytest` from the root directory.
 
 ### To train a model on dataset
 Create a config.yaml file with your desired training parameters <br>
-Run `python train.py --config <path_to_config_file>`
+Run `python train.py --config <path_to_config_file>` <br> `--iterations <n>` overrides the number of iterations in the config <br>
+
+Training is seeded with the `seed` value in the config, so running the same config twice gives the same model.
 
 ### To save training progress to a checkpoint
 `python train.py --config <path_to_config_file> --save` saves to `checkpoint.pt` by default <br>
-`python train.py --config <path_to_config_file> --save -o <output_checkpoint_path>` <br>
+`python train.py --config <path_to_config_file> --save <output_checkpoint_path>` <br>
+
+Checkpoints contain the config, model and optimizer state, the step reached and the random number generator state.
 
 ### To load from a checkpoint
 `python train.py --load` loads from `checkpoint.pt` by default <br>
-`python train.py --load -i <input_checkpoint_path>` <br>
+`python train.py --load <input_checkpoint_path>` <br>
+`python train.py --load <input_checkpoint_path> --iterations 20000` continues training up to step 20000 <br>
+
+`iterations` is the total number of training steps, so a loaded checkpoint continues from the step it was saved at. Resuming gives exactly the same result as training without stopping. `--load` is ignored if `--config` is also passed.
+
+### To generate text
+`python generate.py --model <checkpoint_path> --prompt "ROMEO:"` <br>
+
+### Run results
+Every training run saves a JSON file with:
+- run id, git commit, and whether there were uncommitted changes
+- the full config and seed
+- parameter count
+- system info (Python, PyTorch, CUDA, GPU)
+- training and validation loss at every evaluation, and after the final step
+- final validation perplexity
+- training throughput (tokens/sec, excluding evaluation) and peak GPU memory
+
+Results are saved to `results/dev/` by default, which is not tracked by git. Research runs are saved with `--results-dir <directory>` so they can be committed. <br>
+`results.load_runs(<directory>)` loads every run in a directory for comparison.
 
 ### Dataset and tokenization
 
@@ -36,7 +59,7 @@ Uses Karpathy's tinyshakespeare dataset for now. <br>
 
 ## Models
 
-Example configs for all models can be found in `configs/`
+Example configs for all models can be found in `config/`
 
 ### Bigram Language Model
 

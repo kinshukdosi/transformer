@@ -2,10 +2,13 @@
 Tests for the training loop, checkpointing, seeding and generation scripts
 """
 
+import math
 import torch
 import train
+import pytest
 import generate
 from pathlib import Path
+from results import get_commit_hash, load_runs
 from config import (
     DEFAULT_SEED,
     BaseConfig,
@@ -104,14 +107,59 @@ def test_checkpoint_round_trip(tmp_path):
 
 
 def test_resume_from_checkpoint(tmp_path):
-    """Training should be able to continue from a saved checkpoint"""
+    """
+    Training for 10 steps, saving, then resuming up to 20 steps should give exactly the
+    same weights and losses as training for 20 steps without stopping
+    """
+
+    uninterrupted = train.main(
+        get_tiny_config(iterations=20), results_dir=tmp_path / "uninterrupted"
+    )
+
+    path = tmp_path / "checkpoint.pt"
+    train.main(get_tiny_config(iterations=10), output_ckpt=path)
+    resumed = train.main(
+        get_tiny_config(iterations=20),
+        input_ckpt=path,
+        results_dir=tmp_path / "resumed",
+    )
+
+    [uninterrupted_run] = load_runs(tmp_path / "uninterrupted")
+    [resumed_run] = load_runs(tmp_path / "resumed")
+
+    # without this, a run that ignored the checkpoint and trained from scratch would
+    # also match, because every call to main() is seeded the same way
+    assert resumed_run["training"]["start_step"] == 10
+    assert resumed_run["training"]["steps"] == 10
+
+    assert_state_dicts_equal(uninterrupted.state_dict(), resumed.state_dict())
+    assert resumed_run["evals"] == uninterrupted_run["evals"][1:]  # steps 10 and 20
+
+
+def test_run_results(tmp_path):
+    """Each run should save a results file with its metadata and measurements"""
 
     cfg = get_tiny_config()
-    path = tmp_path / "checkpoint.pt"
-    model = train.main(cfg, output_ckpt=path)
-    resumed = train.main(cfg, input_ckpt=path)
+    model = train.main(cfg, results_dir=tmp_path)
+    [run] = load_runs(tmp_path)
 
-    assert_state_dicts_not_equal(model.state_dict(), resumed.state_dict())
+    assert run["git_commit"] == get_commit_hash()
+    assert run["config"]["seed"] == cfg.seed
+    assert run["system"]["torch"] == torch.__version__
+    assert run["parameters"] == sum(p.numel() for p in model.parameters())
+
+    # evaluated every eval_interval steps, and once more after the final step
+    assert [e["step"] for e in run["evals"]] == [0, 10, 20]
+    assert run["final"]["step"] == cfg.iterations
+    assert run["final"]["val_perplexity"] == pytest.approx(
+        math.exp(run["final"]["val_loss"])
+    )
+
+    training = run["training"]
+    assert training["tokens"] == cfg.iterations * cfg.batch_size * cfg.max_seq_len
+    assert training["tokens_per_sec"] > 0
+    if torch.cuda.is_available():
+        assert training["peak_memory_mb"] > 0
 
 
 def test_generate_script(tmp_path, capsys):

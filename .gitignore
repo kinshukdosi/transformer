@@ -3,4 +3,4 @@ __pycache__
 tokenizer.json
 .pytest_cache
 *.pt
-*.json
+results/dev/
