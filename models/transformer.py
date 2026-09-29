@@ -8,8 +8,6 @@ import torch.nn.functional as F
 from typing import Optional
 from models.attention import Attention
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
 
 class FeedForward(nn.Module):
     """
@@ -137,7 +135,7 @@ class TransformerLanguageModel(nn.Module):
 
         tok_emb = self.token_emb_table(inputs)  # (batch_size, seq_len, n_embd)
         pos_emb = self.pos_emb_table(
-            torch.arange(seq_len, device=device)
+            torch.arange(seq_len, device=inputs.device)
         )  # (seq_len, n_embd)
 
         # combine token and positional information by broadcasting addition

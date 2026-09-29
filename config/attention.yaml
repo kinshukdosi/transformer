@@ -21,6 +21,9 @@ lr: 1e-3
 eval_iterations: 100
 eval_interval: 500
 
+# reproducibility
+seed: 100
+
 # attention head parameters
 n_embd: 128
 num_heads: 4

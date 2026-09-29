@@ -155,6 +155,7 @@ class BPETokenizer:
             int(k): v.encode("latin-1") for k, v in data["vocab"].items()
         }
         tokenizer.merges = {(a, b): c for a, b, c in data["merges"]}
+        tokenizer.vocab_size = len(tokenizer.vocab)
 
         return tokenizer
 

@@ -10,6 +10,10 @@ supported_tokenizers = ["bpe", "simple"]
 supported_models = ["bigram", "attention", "transformer"]
 supported_optimizers = ["AdamW"]
 
+# seed that was hard-coded in train.py before it became a config option. used for
+# configs and checkpoints that don't specify one
+DEFAULT_SEED = 100
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
@@ -27,6 +31,7 @@ class BaseConfig:
     lr: float
     eval_iterations: int
     eval_interval: int
+    seed: int
 
 
 @dataclass
@@ -52,6 +57,7 @@ def parse_config(cfg: dict) -> BaseConfig:
     model_type = cfg["model_type"]
     cfg["data_path"] = Path(cfg["data_path"])
     cfg["lr"] = float(cfg["lr"])
+    cfg.setdefault("seed", DEFAULT_SEED)
 
     if model_type == "bigram":
         return BigramConfig(**cfg)
@@ -68,7 +74,7 @@ def parse_config(cfg: dict) -> BaseConfig:
 def get_config_from_pytorch_model(model: Path):
     assert model.suffix == ".pt", f"{model} must be a .pt file"
 
-    m = torch.load(model)
+    m = torch.load(model, map_location=device)
     cfg_dict = m["config"]
     config = parse_config(cfg_dict)
     return config

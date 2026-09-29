@@ -19,7 +19,7 @@ def main(model_path: Path, prompt: Optional[str]):
     model = get_model_from_config(config)
 
     model.load_state_dict(
-        torch.load(model_path)["model_state_dict"]
+        torch.load(model_path, map_location=device)["model_state_dict"]
     )  # load trained weights
 
     model.eval()  # switch to inference

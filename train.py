@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 from data_loader import batch_data
 from config import (
+    device,
     BaseConfig,
     parse_config,
     supported_tokenizers,
@@ -20,7 +21,6 @@ from config import (
 
 # so that we can load/save checkpoints that include configs with pathlib.Path
 torch.serialization.add_safe_globals([pathlib.PosixPath])
-torch.random.manual_seed(100)
 
 
 def main(
@@ -37,6 +37,10 @@ def main(
     assert config.batch_size >= 1, "Batch size should be >= 1"
     assert config.iterations >= 1, "Number of training iterations should be >= 1"
     assert config.optimizer in supported_optimizers, "Optimizer not supported"
+
+    # seed here rather than at import, so that every call to main() is reproducible.
+    # this seeds the CPU and all CUDA devices
+    torch.manual_seed(config.seed)
 
     tokenizer = get_tokenizer_from_config(config)
     with open(config.data_path, "r") as f:
@@ -64,7 +68,7 @@ def main(
 
     if input_ckpt is not None:
         print(f"Starting training from checkpoint: {input_ckpt}")
-        checkpoint = torch.load(input_ckpt)
+        checkpoint = torch.load(input_ckpt, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
         optim.load_state_dict(checkpoint["optimizer_state_dict"])
 
@@ -100,8 +104,10 @@ def main(
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optim.state_dict(),
         }
-        print(f"Saving checkpoint: {args.save}")
+        print(f"Saving checkpoint: {output_ckpt}")
         torch.save(checkpoint, output_ckpt)
+
+    return model
 
 
 if __name__ == "__main__":
