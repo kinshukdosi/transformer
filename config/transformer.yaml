@@ -1,4 +1,4 @@
-tokenizer: simple
+tokenizer: bpe
 
 # model parameters
 model_type: transformer
@@ -22,10 +22,10 @@ eval_iterations: 100
 eval_interval: 500
 
 # attention head parameters
-n_embd: 32
-num_heads: 1
+n_embd: 128
+num_heads: 4
 dropout: 0.1
 group_size: 1
 
 # transformer specific parameters
-n_layers: 1
+n_layers: 4

@@ -80,9 +80,9 @@ class TransformerBlock(nn.Module):
         # in the original paper, we can see that the layernorm is applied AFTER
         # attention/feedforward components. this implementation has changed since then,
         # as it has been found that applying the layernorm before means we can train
-        # models fast, and they become easier to optimize using larger learning rates
-        att_out = inputs + self.layer_norm1(self.attention(inputs))
-        ff_out = att_out + self.layer_norm2(self.feed_forward(att_out))
+        # models faster, and they become easier to optimize using larger learning rates
+        att_out = inputs + self.attention(self.layer_norm1(inputs))
+        ff_out = att_out + self.feed_forward(self.layer_norm2(att_out))
 
         return ff_out
 

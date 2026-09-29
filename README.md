@@ -52,9 +52,9 @@ Model that implements the full transformer architecture as detailed in "Attentio
 
 ### Language Model Comparison
 
-| Model Type     | Vocab Size | Dataset         | Batch Size | Iterations | Learning Rate | Max Sequence Length | Head Size | # Heads | Validation Loss |
-| -------------- | ---------- | --------------- | ---------- | ---------- | ------------- | --------------------| --------- | ------- | --------------- |
-| Bigram         | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | —                   | —         | —       | ~2.5            |
-| Attention      | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | 16                  | 32        | 1       | ~2.4            |
-| Attention      | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | 16                  | 32        | 4       | ~2.1            |
-
+| Model Type     | Vocab Size | Dataset         | Batch Size | Iterations | Learning Rate | Max Sequence Length | Head Size | # Heads | # Layers | Validation Loss |
+| -------------- | ---------- | --------------- | ---------- | ---------- | ------------- | --------------------| --------- | ------- | -------- | --------------- |
+| Bigram         | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | -                   | -         | -       | -        | ~2.5            |
+| Attention      | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | 16                  | 32        | 1       | -        | ~2.4            |
+| Attention      | 257        | tinyshakespeare | 32         | 25k        | 1e-3 (AdamW)  | 16                  | 32        | 4       | -        | ~2.1            |
+| Transformer    | 257        | tinyshakespeare | 32         | 10k        | 1e-3 (AdamW)  | 16                  | 32        | 4       | 4        | ~1.8            |
