@@ -82,6 +82,25 @@ def test_training_is_seeded():
     assert_state_dicts_not_equal(model_a.state_dict(), model_c.state_dict())
 
 
+def test_evaluation_does_not_change_training(tmp_path):
+    """
+    Evaluating more often, or on more batches, shouldn't change the trained model, and
+    the losses at steps both runs evaluated should be identical
+    """
+
+    model_a = train.main(get_tiny_config(), results_dir=tmp_path / "a")
+    model_b = train.main(get_tiny_config(eval_interval=5), results_dir=tmp_path / "b")
+    model_c = train.main(get_tiny_config(eval_iterations=4))
+
+    assert_state_dicts_equal(model_a.state_dict(), model_b.state_dict())
+    assert_state_dicts_equal(model_a.state_dict(), model_c.state_dict())
+
+    [run_a] = load_runs(tmp_path / "a")
+    [run_b] = load_runs(tmp_path / "b")
+    assert [e["step"] for e in run_b["evals"]] == [0, 5, 10, 15, 20]
+    assert run_a["evals"] == run_b["evals"][::2]  # steps 0, 10 and 20
+
+
 def test_tokenizer_not_trained_on_validation_text(tmp_path):
     """The tokenizer should only learn its vocabulary from the training split"""
 

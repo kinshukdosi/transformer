@@ -7,7 +7,7 @@ import pathlib
 import dataclasses
 from pathlib import Path
 from typing import Optional
-from data_loader import batch_data, split_text
+from data_loader import batch_data, eval_windows, split_text
 from results import RESULTS_DIR, new_run, save_run, get_peak_memory_mb
 from config import (
     device,
@@ -114,24 +114,36 @@ def main(
     run = new_run(config, model)
     run["resumed_from"] = str(input_ckpt) if input_ckpt is not None else None
 
+    # evaluation uses the same fixed windows every time, chosen once here. sampling them
+    # randomly would make the losses noisy, and would use the random number generator,
+    # so changing the evaluation settings would change which batches we train on
+    max_eval_windows = config.eval_iterations * config.batch_size
+    train_eval_data = eval_windows(train_data, config.max_seq_len, max_eval_windows)
+    val_eval_data = eval_windows(val_data, config.max_seq_len, max_eval_windows)
+
     # efficiency, telling pytorch we will never run backpropagation here
     @torch.no_grad()
-    def model_eval(data: torch.Tensor):
+    def model_eval(eval_data: tuple[torch.Tensor, torch.Tensor]) -> float:
         model.eval()
-        losses = torch.zeros(config.eval_iterations)
-        for i in range(config.eval_iterations):
-            inputs, targets = batch_data(data, config.batch_size, config.max_seq_len)
+        all_inputs, all_targets = eval_data
+        total_loss = 0.0
+        for i in range(0, len(all_inputs), config.batch_size):
+            inputs = all_inputs[i : i + config.batch_size]
+            targets = all_targets[i : i + config.batch_size]
             _, loss = model(inputs, targets)  # logits don't matter here
-            losses[i] = loss.item()
+
+            # the last batch can be smaller, so weight each batch's mean loss by its
+            # size to get the mean loss over every window
+            total_loss += loss.item() * len(inputs)
         model.train()
-        return losses.mean()
+        return total_loss / len(all_inputs)
 
     def evaluate(step: int) -> float:
         """Evaluate on both splits, record the losses and return the time taken"""
         synchronize()
         start = time.perf_counter()
-        train_loss = model_eval(train_data).item()
-        val_loss = model_eval(val_data).item()
+        train_loss = model_eval(train_eval_data)
+        val_loss = model_eval(val_eval_data)
         synchronize()
 
         print(
@@ -163,8 +175,8 @@ def main(
     synchronize()
     train_time = time.perf_counter() - start - eval_time
 
-    # save the RNG state before the final evaluation. a resumed run then evaluates at
-    # this step with the same random batches, exactly like an uninterrupted run would
+    # a resumed run continues the random number stream from here, so it samples the
+    # same training batches that an uninterrupted run would
     rng_state = get_rng_state()
     evaluate(config.iterations)
 

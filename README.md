@@ -23,6 +23,8 @@ Run `python train.py --config <path_to_config_file>` <br> `--iterations <n>` ove
 
 Training is seeded with the `seed` value in the config, so running the same config twice gives the same model.
 
+Evaluation uses the same fixed, non-overlapping windows every time: up to `eval_iterations × batch_size` windows spread evenly across each split. It doesn't use the random number generator, so changing the evaluation settings doesn't change training.
+
 ### To save training progress to a checkpoint
 `python train.py --config <path_to_config_file> --save` saves to `checkpoint.pt` by default <br>
 `python train.py --config <path_to_config_file> --save <output_checkpoint_path>` <br>
