@@ -31,3 +31,14 @@ def batch_data(
 
     inputs, targets = inputs.to(device), targets.to(device)
     return inputs, targets
+
+
+def split_text(text: str, train_split: float) -> tuple[str, str]:
+    """
+    Split raw text into training and validation text. We split before tokenizing so
+    that the tokenizer can be trained on the training text only. Otherwise its
+    vocabulary (BPE merges, or the character set) would be learned partly from the
+    validation text, which the model is supposed to have never seen
+    """
+    n = int(len(text) * train_split)
+    return text[:n], text[n:]

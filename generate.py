@@ -3,6 +3,7 @@ import argparse
 import pathlib
 from pathlib import Path
 from typing import Optional
+from data_loader import split_text
 from config import (
     get_config_from_pytorch_model,
     get_model_from_config,
@@ -27,7 +28,10 @@ def main(model_path: Path, prompt: Optional[str]):
 
     with open(config.data_path, "r") as f:
         text = f.read()
-    tokenizer.train(text, config.vocab_size)
+
+    # retrain the tokenizer exactly as train.py did, on the training split only
+    train_text, _ = split_text(text, config.train_split)
+    tokenizer.train(train_text, config.vocab_size)
 
     if prompt is not None:
         seed = tokenizer.encode(prompt)

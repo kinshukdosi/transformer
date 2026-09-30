@@ -7,7 +7,7 @@ import pathlib
 import dataclasses
 from pathlib import Path
 from typing import Optional
-from data_loader import batch_data
+from data_loader import batch_data, split_text
 from results import RESULTS_DIR, new_run, save_run, get_peak_memory_mb
 from config import (
     device,
@@ -70,17 +70,15 @@ def main(
     tokenizer = get_tokenizer_from_config(config)
     with open(config.data_path, "r") as f:
         text = f.read()
-    tokenizer.train(text, config.vocab_size)
+    train_text, val_text = split_text(text, config.train_split)
+    tokenizer.train(train_text, config.vocab_size)
 
     if config.vocab_size != tokenizer.vocab_size:
         print("Config/Tokenizer vocab size mismatch! Using tokenizer vocab size")
         config.vocab_size = tokenizer.vocab_size
 
-    text_encoded = torch.tensor(tokenizer.encode(text), dtype=torch.long)
-
-    n = len(text_encoded)
-    train_data = text_encoded[: int(n * config.train_split)]
-    val_data = text_encoded[int(n * config.train_split) :]
+    train_data = torch.tensor(tokenizer.encode(train_text), dtype=torch.long)
+    val_data = torch.tensor(tokenizer.encode(val_text), dtype=torch.long)
 
     model = get_model_from_config(config)
 

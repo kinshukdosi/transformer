@@ -82,6 +82,19 @@ def test_training_is_seeded():
     assert_state_dicts_not_equal(model_a.state_dict(), model_c.state_dict())
 
 
+def test_tokenizer_not_trained_on_validation_text(tmp_path):
+    """The tokenizer should only learn its vocabulary from the training split"""
+
+    # "z" only appears in the last 10% of the text, which is the validation split
+    data_path = tmp_path / "data.txt"
+    data_path.write_text("abcd" * 900 + "z" * 400)
+
+    # the character tokenizer has no unknown token, so encoding the validation text
+    # fails if "z" was not in the text the tokenizer was trained on
+    with pytest.raises(KeyError):
+        train.main(get_tiny_config(data_path=str(data_path)))
+
+
 def test_checkpoint_round_trip(tmp_path):
     """Saved checkpoint should restore the config, model and optimizer state"""
 
