@@ -8,7 +8,13 @@ import dataclasses
 from pathlib import Path
 from typing import Optional
 from data_loader import batch_data, eval_windows, split_text
-from results import RESULTS_DIR, new_run, save_run, get_peak_memory_mb
+from results import (
+    RESULTS_DIR,
+    new_run,
+    save_run,
+    get_dataset_info,
+    get_peak_memory_mb,
+)
 from config import (
     device,
     BaseConfig,
@@ -95,7 +101,15 @@ def main(
 
     optim = None
     if config.optimizer == "AdamW":
-        optim = torch.optim.AdamW(model.parameters(), lr=config.lr)
+        # weight decay is applied to every parameter for now, including biases,
+        # LayerNorm weights and embeddings
+        optim = torch.optim.AdamW(
+            model.parameters(),
+            lr=config.lr,
+            betas=(config.beta1, config.beta2),
+            eps=config.eps,
+            weight_decay=config.weight_decay,
+        )
 
     if optim is None:
         raise TypeError("Optimizer is not set! Aborting")
@@ -112,6 +126,7 @@ def main(
             set_rng_state(checkpoint["rng_state"])
 
     run = new_run(config, model)
+    run["dataset"] = get_dataset_info(config.data_path)
     run["resumed_from"] = str(input_ckpt) if input_ckpt is not None else None
 
     # evaluation uses the same fixed windows every time, chosen once here. sampling them

@@ -1,5 +1,6 @@
 import torch
 from pathlib import Path
+from typing import Optional
 from dataclasses import dataclass
 from tokenizer import BPETokenizer, SimpleTokenizer
 from models.bigram import BigramLanguageModel
@@ -13,6 +14,14 @@ supported_optimizers = ["AdamW"]
 # seed that was hard-coded in train.py before it became a config option. used for
 # configs and checkpoints that don't specify one
 DEFAULT_SEED = 100
+
+# PyTorch's AdamW defaults
+DEFAULT_OPTIMIZER_SETTINGS = {
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "eps": 1e-8,
+    "weight_decay": 0.01,
+}
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -29,9 +38,14 @@ class BaseConfig:
     iterations: int
     optimizer: str
     lr: float
+    beta1: float
+    beta2: float
+    eps: float
+    weight_decay: float
     eval_iterations: int
     eval_interval: int
     seed: int
+    experiment: Optional[str]  # name of the experiment the run belongs to
 
 
 @dataclass
@@ -56,8 +70,14 @@ def parse_config(cfg: dict) -> BaseConfig:
 
     model_type = cfg["model_type"]
     cfg["data_path"] = Path(cfg["data_path"])
-    cfg["lr"] = float(cfg["lr"])
     cfg.setdefault("seed", DEFAULT_SEED)
+    cfg.setdefault("experiment", None)
+    for key, value in DEFAULT_OPTIMIZER_SETTINGS.items():
+        cfg.setdefault(key, value)
+
+    # yaml reads numbers like 1e-3 as strings, because it expects a decimal point
+    for key in ["lr", *DEFAULT_OPTIMIZER_SETTINGS]:
+        cfg[key] = float(cfg[key])
 
     if model_type == "bigram":
         return BigramConfig(**cfg)

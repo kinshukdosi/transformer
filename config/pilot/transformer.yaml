@@ -16,10 +16,17 @@ iterations: 10000
 # optimization
 optimizer: AdamW
 lr: 1e-3
+beta1: 0.9
+beta2: 0.999
+eps: 1e-8
+weight_decay: 0.01
 
 # evaluation
 eval_iterations: 100
 eval_interval: 500
+
+# recorded in the results and used in the results file name
+experiment: pilot-transformer
 
 # reproducibility
 seed: 100

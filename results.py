@@ -6,6 +6,7 @@ runs can be compared programmatically and reproduced later.
 
 import git
 import json
+import hashlib
 import uuid
 import torch
 import platform
@@ -35,7 +36,8 @@ def get_run_id(config: BaseConfig) -> str:
     # timestamp first so that run files sort chronologically. the random suffix stops
     # two runs started in the same second from overwriting each other
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return f"{timestamp}-{config.model_type}-{uuid.uuid4().hex[:6]}"
+    name = config.experiment if config.experiment is not None else config.model_type
+    return f"{timestamp}-{name}-{uuid.uuid4().hex[:6]}"
 
 
 def get_system_info() -> dict:
@@ -57,6 +59,17 @@ def get_system_info() -> dict:
     return info
 
 
+def get_dataset_info(data_path: Path) -> dict:
+    """Identify the dataset by a hash of its contents, not just its file name"""
+    with open(data_path, "rb") as f:
+        data = f.read()
+    return {
+        "path": str(data_path),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "bytes": len(data),
+    }
+
+
 def count_parameters(model: torch.nn.Module) -> int:
     return sum(p.numel() for p in model.parameters())
 
@@ -65,6 +78,7 @@ def new_run(config: BaseConfig, model: torch.nn.Module) -> dict:
     """Start a run record. Measurements are added to it during training"""
     return {
         "run_id": get_run_id(config),
+        "experiment": config.experiment,
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "git_commit": get_commit_hash(),
         "git_dirty": is_repo_dirty(),

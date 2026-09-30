@@ -17,10 +17,17 @@ iterations: 200
 # optimization
 optimizer: AdamW
 lr: 1e-3
+beta1: 0.9
+beta2: 0.999
+eps: 1e-8
+weight_decay: 0.01
 
 # evaluation
 eval_iterations: 4
 eval_interval: 50
+
+# recorded in the results and used in the results file name
+experiment: debug-bigram
 
 # reproducibility
 seed: 100

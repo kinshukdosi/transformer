@@ -3,6 +3,7 @@ Tests for the training loop, checkpointing, seeding and generation scripts
 """
 
 import math
+import hashlib
 import torch
 import train
 import pytest
@@ -11,6 +12,7 @@ from pathlib import Path
 from results import get_commit_hash, load_runs
 from config import (
     DEFAULT_SEED,
+    DEFAULT_OPTIMIZER_SETTINGS,
     BaseConfig,
     parse_config,
     get_config_from_pytorch_model,
@@ -69,6 +71,36 @@ def test_seed_default():
     del cfg_dict["seed"]
 
     assert parse_config(cfg_dict).seed == DEFAULT_SEED
+
+
+def test_optimizer_defaults():
+    """
+    Configs and checkpoints saved before the optimizer settings were configurable use
+    PyTorch's AdamW defaults, so they train exactly as before
+    """
+
+    cfg_dict = vars(get_tiny_config()).copy()
+    for key in DEFAULT_OPTIMIZER_SETTINGS:
+        del cfg_dict[key]
+    cfg = parse_config(cfg_dict)
+    defaults = torch.optim.AdamW([torch.zeros(1)]).defaults
+
+    assert (cfg.beta1, cfg.beta2) == defaults["betas"]
+    assert cfg.eps == defaults["eps"]
+    assert cfg.weight_decay == defaults["weight_decay"]
+
+
+def test_optimizer_settings(tmp_path):
+    """Optimizer settings in the config should be the ones used for training"""
+
+    cfg = get_tiny_config(beta1=0.8, beta2=0.95, eps=1e-6, weight_decay=0.1)
+    path = tmp_path / "checkpoint.pt"
+    train.main(cfg, output_ckpt=path)
+    [param_group] = torch.load(path)["optimizer_state_dict"]["param_groups"]
+
+    assert param_group["betas"] == (0.8, 0.95)
+    assert param_group["eps"] == 1e-6
+    assert param_group["weight_decay"] == 0.1
 
 
 def test_training_is_seeded():
@@ -171,10 +203,16 @@ def test_resume_from_checkpoint(tmp_path):
 def test_run_results(tmp_path):
     """Each run should save a results file with its metadata and measurements"""
 
-    cfg = get_tiny_config()
+    cfg = get_tiny_config(experiment="tiny-test")
     model = train.main(cfg, results_dir=tmp_path)
     [run] = load_runs(tmp_path)
+    with open(cfg.data_path, "rb") as f:
+        data = f.read()
 
+    assert run["experiment"] == "tiny-test"
+    assert "tiny-test" in run["run_id"]
+    assert run["dataset"]["sha256"] == hashlib.sha256(data).hexdigest()
+    assert run["dataset"]["bytes"] == len(data)
     assert run["git_commit"] == get_commit_hash()
     assert run["config"]["seed"] == cfg.seed
     assert run["system"]["torch"] == torch.__version__

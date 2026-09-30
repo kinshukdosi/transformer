@@ -43,8 +43,9 @@ Checkpoints contain the config, model and optimizer state, the trained tokenizer
 
 ### Run results
 Every training run saves a JSON file with:
-- run id, git commit, and whether there were uncommitted changes
+- run id, experiment name, git commit, and whether there were uncommitted changes
 - the full config and seed
+- the dataset path, size and SHA-256 hash, so results show exactly which data they used
 - parameter count
 - system info (Python, PyTorch, CUDA, GPU)
 - training and validation loss at every evaluation, and after the final step
