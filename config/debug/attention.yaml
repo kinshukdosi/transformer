@@ -1,0 +1,32 @@
+# tiny config to check the code runs, finishes in seconds on a CPU
+tokenizer: simple
+
+# model parameters
+model_type: attention
+vocab_size: 65
+
+# data
+data_path: data/tinyshakespeare.txt
+max_seq_len: 16
+train_split: 0.9 # proportion of dataset to use for training, rest is for validation
+
+# training
+batch_size: 8
+iterations: 200
+
+# optimization
+optimizer: AdamW
+lr: 1e-3
+
+# evaluation
+eval_iterations: 4
+eval_interval: 50
+
+# reproducibility
+seed: 100
+
+# attention head parameters
+n_embd: 32
+num_heads: 4
+dropout: 0.1
+group_size: 2

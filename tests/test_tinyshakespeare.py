@@ -110,15 +110,29 @@ def test_bigram_language_model(tokenizer):
     assert logits.shape == (batch_size, max_seq_len, vocab_size)
 
 
+def load_config(cfg_path: Path):
+    """Helper function for tests"""
+    with open(cfg_path, "r") as f:
+        cfg_dict = yaml.safe_load(f)
+    return parse_config(cfg_dict)
+
+
+@pytest.mark.parametrize(
+    ("cfg_path"), sorted(CONFIG_DIR.glob("**/*.yaml")), ids=lambda p: p.stem
+)
+def test_config_is_valid(cfg_path):
+    """Every config in the repository should parse and point at an existing dataset"""
+
+    cfg = load_config(cfg_path)
+
+    assert cfg.data_path.exists()
+
+
 @pytest.mark.parametrize(
     ("config_file"), ["bigram.yaml", "attention.yaml", "transformer.yaml"]
 )
-def test_train_bigram_model(config_file):
-    """Test very short training on tinyshakespeare dataset"""
+def test_train_debug_config(config_file):
+    """Debug configs are small enough to train in full on tinyshakespeare"""
 
-    cfg_path = CONFIG_DIR / config_file
-    with open(cfg_path, "r") as f:
-        cfg_dict = yaml.safe_load(f)
-    cfg = parse_config(cfg_dict)
-    cfg.iterations = 500
+    cfg = load_config(CONFIG_DIR / "debug" / config_file)
     train.main(cfg)

@@ -61,7 +61,10 @@ Uses Karpathy's tinyshakespeare dataset for now. <br>
 
 ## Models
 
-Example configs for all models can be found in `config/`
+Configs are grouped by what they're for:
+- `config/debug/`: tiny models that train in seconds on a CPU, to check the code runs
+- `config/pilot/`: exploratory configs for finding a sensible setup, these change freely
+- `config/research/`: the frozen baseline and the experiments compared against it. Empty until the baseline is chosen
 
 ### Bigram Language Model
 
