@@ -20,7 +20,10 @@ class SimpleTokenizer:
         # vocab_size input doesn't matter here, we have it so that all tokenizers can be
         # trained by calling the same function. the actual vocab size will be derived
         # from chars
-        self.chars = sorted(list(set(text)))
+        self._build_vocab(sorted(list(set(text))))
+
+    def _build_vocab(self, chars: list):
+        self.chars = chars
         self.vocab_size = len(self.chars)
         self.itos = {i: ch for i, ch in enumerate(self.chars)}
         self.stoi = {ch: i for i, ch in enumerate(self.chars)}
@@ -30,6 +33,13 @@ class SimpleTokenizer:
 
     def encode(self, text: str) -> list:
         return [self.stoi[c] for c in text]
+
+    def state_dict(self) -> dict:
+        """Everything needed to rebuild the tokenizer, e.g. to store in a checkpoint"""
+        return {"chars": self.chars}
+
+    def load_state_dict(self, state: dict):
+        self._build_vocab(state["chars"])
 
 
 class BPETokenizer:
@@ -124,10 +134,13 @@ class BPETokenizer:
 
         return ids
 
-    def save(self, path: Path = DATA_DIR / "tokenizer.json"):
-        assert path.suffix == ".json", "Path should point to .json file"
-
-        data = {
+    def state_dict(self) -> dict:
+        """
+        Everything needed to rebuild the tokenizer, e.g. to store in a checkpoint. Only
+        uses plain types, so it can be saved to JSON and loaded by torch.load with
+        weights_only=True
+        """
+        return {
             # we decode the value here because bytes are not JSON serializable
             # we use latin-1 because some byte sequences between 0-255 aren't valid
             # utf-8, so this could cause errors if the training data had unusual chars
@@ -136,9 +149,21 @@ class BPETokenizer:
             "merges": [[a, b, c] for (a, b), c in self.merges.items()],
         }
 
+    def load_state_dict(self, state: dict):
+        assert "vocab" in state, "vocab not found in tokenizer state"
+        assert "merges" in state, "merges not found in tokenizer state"
+
+        # JSON turns the integer vocab keys into strings, so convert them back
+        self.vocab = {int(k): v.encode("latin-1") for k, v in state["vocab"].items()}
+        self.merges = {(a, b): c for a, b, c in state["merges"]}
+        self.vocab_size = len(self.vocab)
+
+    def save(self, path: Path = DATA_DIR / "tokenizer.json"):
+        assert path.suffix == ".json", "Path should point to .json file"
+
         # good to specify encoding here in case vocabulary includes non-ASCII tokens
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            json.dump(self.state_dict(), f, ensure_ascii=False, indent=2)
 
     @classmethod
     def load(cls, path: Path = DATA_DIR / "tokenizer.json"):
@@ -147,15 +172,8 @@ class BPETokenizer:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        assert "vocab" in data, "vocab not found in file"
-        assert "merges" in data, "merges not found in file"
-
         tokenizer = cls()
-        tokenizer.vocab = {
-            int(k): v.encode("latin-1") for k, v in data["vocab"].items()
-        }
-        tokenizer.merges = {(a, b): c for a, b, c in data["merges"]}
-        tokenizer.vocab_size = len(tokenizer.vocab)
+        tokenizer.load_state_dict(data)
 
         return tokenizer
 

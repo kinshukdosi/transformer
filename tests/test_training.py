@@ -188,3 +188,36 @@ def test_generate_script(tmp_path, capsys):
 
     assert output.startswith(prompt)
     assert len(output) > len(prompt) + 100
+
+
+def test_checkpoint_tokenizer(tmp_path, capsys):
+    """Generating from a checkpoint shouldn't need the dataset the tokenizer was
+    trained on"""
+
+    data_path = tmp_path / "data.txt"
+    data_path.write_text((DATA_DIR / "tinyshakespeare.txt").read_text())
+    path = tmp_path / "checkpoint.pt"
+    train.main(get_tiny_config(data_path=str(data_path)), output_ckpt=path)
+    data_path.unlink()
+    capsys.readouterr()  # discard training output
+
+    prompt = "ROMEO:"
+    generate.main(path, prompt)
+
+    assert capsys.readouterr().out.startswith(prompt)
+
+
+def test_generate_old_checkpoint(tmp_path, capsys):
+    """Checkpoints saved before the tokenizer was stored should retrain it"""
+
+    path = tmp_path / "checkpoint.pt"
+    train.main(get_tiny_config(), output_ckpt=path)
+    checkpoint = torch.load(path)
+    del checkpoint["tokenizer"]
+    torch.save(checkpoint, path)
+    capsys.readouterr()  # discard training output
+
+    prompt = "ROMEO:"
+    generate.main(path, prompt)
+
+    assert capsys.readouterr().out.startswith(prompt)

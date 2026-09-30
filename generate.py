@@ -19,19 +19,21 @@ def main(model_path: Path, prompt: Optional[str]):
     config = get_config_from_pytorch_model(model_path)
     model = get_model_from_config(config)
 
-    model.load_state_dict(
-        torch.load(model_path, map_location=device)["model_state_dict"]
-    )  # load trained weights
+    checkpoint = torch.load(model_path, map_location=device)
+    model.load_state_dict(checkpoint["model_state_dict"])  # load trained weights
 
     model.eval()  # switch to inference
     tokenizer = get_tokenizer_from_config(config)
 
-    with open(config.data_path, "r") as f:
-        text = f.read()
-
-    # retrain the tokenizer exactly as train.py did, on the training split only
-    train_text, _ = split_text(text, config.train_split)
-    tokenizer.train(train_text, config.vocab_size)
+    if "tokenizer" in checkpoint:
+        tokenizer.load_state_dict(checkpoint["tokenizer"])
+    else:
+        # checkpoints saved before the tokenizer was stored. retrain it exactly as
+        # train.py did, on the training split only
+        with open(config.data_path, "r") as f:
+            text = f.read()
+        train_text, _ = split_text(text, config.train_split)
+        tokenizer.train(train_text, config.vocab_size)
 
     if prompt is not None:
         seed = tokenizer.encode(prompt)

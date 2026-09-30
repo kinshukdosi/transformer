@@ -2,6 +2,7 @@
 Correctness tests for the character-level and BPE tokenizers
 """
 
+import torch
 import pytest
 from pathlib import Path
 from tokenizer import BYTE_RANGE, BPETokenizer, SimpleTokenizer
@@ -96,3 +97,23 @@ def test_bpe_save_and_load(tmp_path):
     assert tokenizer_readback.vocab_size == tokenizer.vocab_size
     assert tokenizer_readback.encode(text) == tokenizer.encode(text)
     assert tokenizer_readback.decode(tokenizer.encode(text)) == text
+
+
+@pytest.mark.parametrize(("tokenizer"), [BPETokenizer, SimpleTokenizer])
+def test_state_dict(tokenizer, tmp_path):
+    """A tokenizer rebuilt from its state (as stored in a checkpoint) should match"""
+
+    text = get_text()
+    original = tokenizer()
+    original.train(text, VOCAB_SIZE)
+
+    # checkpoints are loaded with torch.load's default weights_only=True, which only
+    # allows plain types, so check the state survives that too
+    path = tmp_path / "tokenizer.pt"
+    torch.save(original.state_dict(), path)
+    restored = tokenizer()
+    restored.load_state_dict(torch.load(path))
+
+    assert restored.vocab_size == original.vocab_size
+    assert restored.encode(text) == original.encode(text)
+    assert restored.decode(original.encode(text)) == text

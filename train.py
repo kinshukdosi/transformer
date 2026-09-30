@@ -67,11 +67,22 @@ def main(
     # this seeds the CPU and all CUDA devices
     torch.manual_seed(config.seed)
 
+    checkpoint = None
+    if input_ckpt is not None:
+        print(f"Starting training from checkpoint: {input_ckpt}")
+        checkpoint = torch.load(input_ckpt, map_location=device)
+
     tokenizer = get_tokenizer_from_config(config)
     with open(config.data_path, "r") as f:
         text = f.read()
     train_text, val_text = split_text(text, config.train_split)
-    tokenizer.train(train_text, config.vocab_size)
+
+    # a resumed run must use the tokenizer the model was trained with. checkpoints
+    # saved before the tokenizer was stored have to retrain it
+    if checkpoint is not None and "tokenizer" in checkpoint:
+        tokenizer.load_state_dict(checkpoint["tokenizer"])
+    else:
+        tokenizer.train(train_text, config.vocab_size)
 
     if config.vocab_size != tokenizer.vocab_size:
         print("Config/Tokenizer vocab size mismatch! Using tokenizer vocab size")
@@ -93,9 +104,7 @@ def main(
     # the step it was saved at. checkpoints saved before the step and RNG state were
     # recorded start again from step 0
     start_step = 0
-    if input_ckpt is not None:
-        print(f"Starting training from checkpoint: {input_ckpt}")
-        checkpoint = torch.load(input_ckpt, map_location=device)
+    if checkpoint is not None:
         model.load_state_dict(checkpoint["model_state_dict"])
         optim.load_state_dict(checkpoint["optimizer_state_dict"])
         start_step = checkpoint.get("step", 0)
@@ -180,6 +189,7 @@ def main(
             "config": dataclasses.asdict(config),
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optim.state_dict(),
+            "tokenizer": tokenizer.state_dict(),
             "step": config.iterations,
             "rng_state": rng_state,
             "run_id": run["run_id"],

@@ -27,7 +27,7 @@ Training is seeded with the `seed` value in the config, so running the same conf
 `python train.py --config <path_to_config_file> --save` saves to `checkpoint.pt` by default <br>
 `python train.py --config <path_to_config_file> --save <output_checkpoint_path>` <br>
 
-Checkpoints contain the config, model and optimizer state, the step reached and the random number generator state.
+Checkpoints contain the config, model and optimizer state, the trained tokenizer, the step reached and the random number generator state, so generating text doesn't need the dataset.
 
 ### To load from a checkpoint
 `python train.py --load` loads from `checkpoint.pt` by default <br>
