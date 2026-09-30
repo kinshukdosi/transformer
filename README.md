@@ -55,6 +55,8 @@ Every training run saves a JSON file with:
 Results are saved to `results/dev/` by default, which is not tracked by git. Research runs are saved with `--results-dir <directory>` so they can be committed. <br>
 `results.load_runs(<directory>)` loads every run in a directory for comparison.
 
+`python compare.py [<results_directory> ...]` prints the runs side by side (default `results/dev/`). It shows only the config settings that differ between runs, with the final losses, throughput, peak memory and commit, and warns when runs used different data, tokenizers or hardware, or had uncommitted changes. `--experiment <name>` only compares runs whose experiment name contains `<name>`.
+
 ### Dataset and tokenization
 
 Uses Karpathy's tinyshakespeare dataset for now. <br>
