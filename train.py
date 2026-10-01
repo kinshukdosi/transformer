@@ -54,6 +54,59 @@ def synchronize():
         torch.cuda.synchronize()
 
 
+def get_lr(config: BaseConfig, step: int) -> float:
+    """
+    Learning rate for a training step: increases linearly for warmup_iters steps, then
+    follows a cosine curve from lr down to min_lr at lr_decay_iters, then stays at
+    min_lr. Without lr_decay_iters, it stays at lr after the warmup.
+
+    It depends only on the step, not on config.iterations, so stopping a run early or
+    resuming it for longer doesn't change the learning rate at any step
+    """
+
+    # at the start the weights are random and AdamW's running estimates of the
+    # gradients are based on very few steps, so large updates can be erratic. warming
+    # up keeps the first updates small. step + 1 so the first step isn't wasted at 0
+    if step < config.warmup_iters:
+        return config.lr * (step + 1) / config.warmup_iters
+
+    if config.lr_decay_iters is None or config.min_lr is None:
+        return config.lr
+
+    if step >= config.lr_decay_iters:
+        return config.min_lr
+
+    # decaying the learning rate makes the updates smaller towards the end of training,
+    # so the weights settle into a minimum instead of bouncing around it. progress goes
+    # from 0 to 1, and the cosine term goes smoothly from 1 to 0
+    progress = (step - config.warmup_iters) / (
+        config.lr_decay_iters - config.warmup_iters
+    )
+    cosine = 0.5 * (1 + math.cos(math.pi * progress))
+    return config.min_lr + cosine * (config.lr - config.min_lr)
+
+
+def training_step(
+    model: torch.nn.Module,
+    optim: torch.optim.Optimizer,
+    config: BaseConfig,
+    inputs: torch.Tensor,
+    targets: torch.Tensor,
+):
+    """One optimizer step. Also used by benchmark.py, so it times the same work"""
+    _, loss = model(inputs, targets)
+    optim.zero_grad()
+    loss.backward()
+
+    # an unusual batch can produce a very large gradient, and one huge update can undo
+    # a lot of training. clipping scales all the gradients down together when their
+    # combined norm is above grad_clip, so the direction of the update is unchanged
+    if config.grad_clip is not None:
+        torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
+
+    optim.step()
+
+
 def main(
     config: BaseConfig,
     output_ckpt: Optional[Path] = None,
@@ -69,6 +122,16 @@ def main(
     assert config.batch_size >= 1, "Batch size should be >= 1"
     assert config.iterations >= 1, "Number of training iterations should be >= 1"
     assert config.optimizer in supported_optimizers, "Optimizer not supported"
+    assert config.warmup_iters >= 0, "warmup_iters should be >= 0"
+    assert (config.lr_decay_iters is None) == (
+        config.min_lr is None
+    ), "Set both lr_decay_iters and min_lr for learning rate decay, or neither"
+    if config.lr_decay_iters is not None and config.min_lr is not None:
+        assert (
+            config.lr_decay_iters > config.warmup_iters
+        ), "lr_decay_iters should be after warmup_iters"
+        assert config.min_lr <= config.lr, "min_lr should be <= lr"
+    assert config.grad_clip is None or config.grad_clip > 0, "grad_clip should be > 0"
 
     # seed here rather than at import, so that every call to main() is reproducible.
     # this seeds the CPU and all CUDA devices
@@ -153,7 +216,12 @@ def main(
             f"Step {step}: Training loss = {train_loss}, Validation loss = {val_loss}"
         )
         run["evals"].append(
-            {"step": step, "train_loss": train_loss, "val_loss": val_loss}
+            {
+                "step": step,
+                "lr": get_lr(config, step),
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+            }
         )
         return time.perf_counter() - start
 
@@ -169,11 +237,11 @@ def main(
         if step % config.eval_interval == 0:
             eval_time += evaluate(step)
 
+        for param_group in optim.param_groups:
+            param_group["lr"] = get_lr(config, step)
+
         inputs, targets = batch_data(train_data, config.batch_size, config.max_seq_len)
-        _, loss = model(inputs, targets)
-        optim.zero_grad()
-        loss.backward()
-        optim.step()
+        training_step(model, optim, config, inputs, targets)
 
     synchronize()
     train_time = time.perf_counter() - start - eval_time

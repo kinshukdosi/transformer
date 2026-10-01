@@ -21,6 +21,12 @@ beta2: 0.999
 eps: 1e-8
 weight_decay: 0.01
 
+# learning rate schedule: linear warmup, then cosine decay to min_lr at lr_decay_iters
+warmup_iters: 200
+lr_decay_iters: 10000
+min_lr: 1e-4
+grad_clip: 1.0
+
 # evaluation
 eval_iterations: 100
 eval_interval: 500

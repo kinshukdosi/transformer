@@ -28,6 +28,14 @@ DEFAULT_OPTIMIZER_SETTINGS = {
     "weight_decay": 0.01,
 }
 
+# learning rate schedule and gradient clipping are off unless they're set in the config
+DEFAULT_SCHEDULE_SETTINGS = {
+    "warmup_iters": 0,
+    "lr_decay_iters": None,
+    "min_lr": None,
+    "grad_clip": None,
+}
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
@@ -47,6 +55,10 @@ class BaseConfig:
     beta2: float
     eps: float
     weight_decay: float
+    warmup_iters: int  # steps to increase the learning rate linearly up to lr
+    lr_decay_iters: Optional[int]  # step at which cosine decay reaches min_lr
+    min_lr: Optional[float]
+    grad_clip: Optional[float]  # max norm of all gradients together
     eval_iterations: int
     eval_interval: int
     seed: int
@@ -77,12 +89,16 @@ def parse_config(cfg: dict) -> BaseConfig:
     cfg["data_path"] = Path(cfg["data_path"])
     cfg.setdefault("seed", DEFAULT_SEED)
     cfg.setdefault("experiment", None)
-    for key, value in DEFAULT_OPTIMIZER_SETTINGS.items():
+    for key, value in {
+        **DEFAULT_OPTIMIZER_SETTINGS,
+        **DEFAULT_SCHEDULE_SETTINGS,
+    }.items():
         cfg.setdefault(key, value)
 
     # yaml reads numbers like 1e-3 as strings, because it expects a decimal point
-    for key in ["lr", *DEFAULT_OPTIMIZER_SETTINGS]:
-        cfg[key] = float(cfg[key])
+    for key in ["lr", *DEFAULT_OPTIMIZER_SETTINGS, "min_lr", "grad_clip"]:
+        if cfg[key] is not None:
+            cfg[key] = float(cfg[key])
 
     if model_type == "bigram":
         return BigramConfig(**cfg)
@@ -146,11 +162,22 @@ def get_model_from_config(config: BaseConfig) -> LanguageModel:
 
 
 def get_optimizer_from_config(config: BaseConfig, model: torch.nn.Module):
+    # weight decay pulls weights towards zero, which stops weight matrices and
+    # embeddings growing large to overfit. biases and LayerNorm weights and biases (the
+    # 1D parameters) only shift and scale activations, and pulling LayerNorm weights
+    # towards zero would just shrink the normalized outputs, so they aren't decayed
+    params = list(model.parameters())
+    param_groups = [
+        {
+            "params": [p for p in params if p.dim() >= 2],
+            "weight_decay": config.weight_decay,
+        },
+        {"params": [p for p in params if p.dim() < 2], "weight_decay": 0.0},
+    ]
+
     if config.optimizer == "AdamW":
-        # weight decay is applied to every parameter for now, including biases,
-        # LayerNorm weights and embeddings
         return torch.optim.AdamW(
-            model.parameters(),
+            param_groups,
             lr=config.lr,
             betas=(config.beta1, config.beta2),
             eps=config.eps,

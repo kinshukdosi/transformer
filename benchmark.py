@@ -14,7 +14,7 @@ import yaml
 from pathlib import Path
 from typing import Callable, Optional
 from compare import format_number, format_table
-from train import synchronize
+from train import synchronize, training_step
 from results import (
     RESULTS_DIR,
     new_record,
@@ -89,16 +89,13 @@ def random_batch(config: BaseConfig) -> tuple[torch.Tensor, torch.Tensor]:
 def benchmark_training(
     model: torch.nn.Module, config: BaseConfig, warmup: int, repeats: int
 ) -> dict:
-    """Time one optimizer step: forward, backward and AdamW update"""
+    """Time one optimizer step: forward, backward, gradient clipping and update"""
     optim = get_optimizer_from_config(config, model)
     inputs, targets = random_batch(config)
     model.train()
 
     def step():
-        _, loss = model(inputs, targets)
-        optim.zero_grad()
-        loss.backward()
-        optim.step()
+        training_step(model, optim, config, inputs, targets)
 
     reset_peak_memory()
     timings = summarise_times(time_repeats(step, warmup, repeats))

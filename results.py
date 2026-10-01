@@ -100,7 +100,7 @@ def new_run(config: BaseConfig, model: torch.nn.Module) -> dict:
     return {
         **new_record(config, model),
         "resumed_from": None,
-        "evals": [],  # list of {"step", "train_loss", "val_loss"}
+        "evals": [],  # list of {"step", "lr", "train_loss", "val_loss"}
     }
 
 

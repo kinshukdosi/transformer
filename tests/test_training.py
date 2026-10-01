@@ -11,12 +11,15 @@ import generate
 from pathlib import Path
 from results import get_commit_hash, load_runs
 from config import (
+    device,
     DEFAULT_SEED,
     DEFAULT_OPTIMIZER_SETTINGS,
+    DEFAULT_SCHEDULE_SETTINGS,
     BaseConfig,
     parse_config,
     get_config_from_pytorch_model,
     get_model_from_config,
+    get_optimizer_from_config,
 )
 
 TEST_DIR = Path(__file__).parent
@@ -96,11 +99,133 @@ def test_optimizer_settings(tmp_path):
     cfg = get_tiny_config(beta1=0.8, beta2=0.95, eps=1e-6, weight_decay=0.1)
     path = tmp_path / "checkpoint.pt"
     train.main(cfg, output_ckpt=path)
-    [param_group] = torch.load(path)["optimizer_state_dict"]["param_groups"]
+    decay_group, no_decay_group = torch.load(path)["optimizer_state_dict"][
+        "param_groups"
+    ]
 
-    assert param_group["betas"] == (0.8, 0.95)
-    assert param_group["eps"] == 1e-6
-    assert param_group["weight_decay"] == 0.1
+    for param_group in [decay_group, no_decay_group]:
+        assert param_group["betas"] == (0.8, 0.95)
+        assert param_group["eps"] == 1e-6
+    assert decay_group["weight_decay"] == 0.1
+    assert no_decay_group["weight_decay"] == 0.0
+
+
+def test_schedule_defaults():
+    """
+    Without schedule settings in the config, the learning rate is constant and
+    gradients aren't clipped, which is how runs trained before they existed
+    """
+
+    cfg_dict = vars(get_tiny_config()).copy()
+    for key in DEFAULT_SCHEDULE_SETTINGS:
+        del cfg_dict[key]
+    cfg = parse_config(cfg_dict)
+
+    assert cfg.grad_clip is None
+    assert [train.get_lr(cfg, step) for step in [0, 10, 1000]] == [cfg.lr] * 3
+
+
+def test_get_lr():
+    """Linear warmup, then cosine decay to min_lr, then constant at min_lr"""
+
+    cfg = get_tiny_config(lr=1e-3, warmup_iters=10, lr_decay_iters=110, min_lr=1e-4)
+
+    # warmup: the first step already has a non-zero learning rate
+    assert train.get_lr(cfg, 0) == pytest.approx(1e-4)
+    assert train.get_lr(cfg, 4) == pytest.approx(5e-4)
+    assert train.get_lr(cfg, 9) == pytest.approx(1e-3)
+
+    # cosine decay: lr at the start, halfway between lr and min_lr in the middle
+    assert train.get_lr(cfg, 10) == pytest.approx(1e-3)
+    assert train.get_lr(cfg, 60) == pytest.approx(5.5e-4)
+    assert train.get_lr(cfg, 110) == pytest.approx(1e-4)
+    assert train.get_lr(cfg, 1000) == pytest.approx(1e-4)
+
+    lrs = [train.get_lr(cfg, step) for step in range(10, 111)]
+    assert all(a >= b for a, b in zip(lrs, lrs[1:]))  # never increases while decaying
+
+    # warmup only
+    cfg = get_tiny_config(lr=1e-3, warmup_iters=10)
+    assert train.get_lr(cfg, 1000) == pytest.approx(1e-3)
+
+
+def test_lr_used_for_training(tmp_path):
+    """The optimizer uses the scheduled learning rate, and it is recorded in results"""
+
+    cfg = get_tiny_config(warmup_iters=5, lr_decay_iters=15, min_lr=1e-4)
+    path = tmp_path / "checkpoint.pt"
+    train.main(cfg, output_ckpt=path, results_dir=tmp_path)
+
+    # the last step trained was iterations - 1, after the decay finished
+    for param_group in torch.load(path)["optimizer_state_dict"]["param_groups"]:
+        assert param_group["lr"] == pytest.approx(1e-4)
+
+    [run] = load_runs(tmp_path)
+    for e in run["evals"]:
+        assert e["lr"] == pytest.approx(train.get_lr(cfg, e["step"]))
+
+
+@pytest.mark.parametrize(
+    ("overrides"),
+    [
+        {"warmup_iters": -1},
+        {"lr_decay_iters": 100},  # without min_lr
+        {"min_lr": 1e-4},  # without lr_decay_iters
+        {"warmup_iters": 100, "lr_decay_iters": 50, "min_lr": 1e-4},
+        {"lr_decay_iters": 100, "min_lr": 1e-2},  # above lr
+        {"grad_clip": 0.0},
+    ],
+)
+def test_invalid_schedule(overrides):
+    with pytest.raises(AssertionError):
+        train.main(get_tiny_config(**overrides))
+
+
+def test_weight_decay_groups():
+    """Weight matrices and embeddings are decayed, biases and LayerNorm aren't"""
+
+    cfg = get_tiny_config(weight_decay=0.1)
+    model = get_model_from_config(cfg)
+    decay_group, no_decay_group = get_optimizer_from_config(cfg, model).param_groups
+
+    names = {param: name for name, param in model.named_parameters()}
+    decayed = {names[p] for p in decay_group["params"]}
+    not_decayed = {names[p] for p in no_decay_group["params"]}
+
+    assert decay_group["weight_decay"] == 0.1
+    assert no_decay_group["weight_decay"] == 0.0
+    assert decayed | not_decayed == set(names.values())  # every parameter, once
+    assert decayed & not_decayed == set()
+
+    assert "token_emb_table.weight" in decayed
+    assert "out_proj.weight" in decayed
+    assert "transformer_blocks.0.attention.query.weight" in decayed
+    assert "out_proj.bias" in not_decayed
+    assert "final_layer_norm.weight" in not_decayed
+    assert "transformer_blocks.0.layer_norm1.bias" in not_decayed
+
+
+def test_grad_clip():
+    """With grad_clip, the combined norm of the gradients used for the update is
+    at most grad_clip"""
+
+    inputs = torch.randint(65, (4, 8), device=device)
+    targets = torch.randint(65, (4, 8), device=device)
+
+    def grad_norm(grad_clip):
+        torch.manual_seed(0)
+        cfg = get_tiny_config(grad_clip=grad_clip)
+        model = get_model_from_config(cfg)
+        train.training_step(
+            model, get_optimizer_from_config(cfg, model), cfg, inputs, targets
+        )
+        grads = [p.grad for p in model.parameters() if p.grad is not None]
+        return torch.linalg.vector_norm(torch.stack([g.norm() for g in grads])).item()
+
+    unclipped = grad_norm(None)
+    assert unclipped > 0.1
+    assert grad_norm(0.1) == pytest.approx(0.1, rel=1e-3)
+    assert grad_norm(1e6) == pytest.approx(unclipped)  # below grad_clip, unchanged
 
 
 def test_training_is_seeded():
@@ -157,7 +282,7 @@ def test_checkpoint_round_trip(tmp_path):
     restored_cfg = get_config_from_pytorch_model(path)
     restored_model = get_model_from_config(restored_cfg)
     restored_model.load_state_dict(checkpoint["model_state_dict"])
-    optim = torch.optim.AdamW(restored_model.parameters(), lr=restored_cfg.lr)
+    optim = get_optimizer_from_config(restored_cfg, restored_model)
     optim.load_state_dict(checkpoint["optimizer_state_dict"])
 
     assert restored_cfg == cfg
@@ -170,20 +295,26 @@ def test_checkpoint_round_trip(tmp_path):
         assert state["exp_avg"].abs().sum() > 0
 
 
-def test_resume_from_checkpoint(tmp_path):
+@pytest.mark.parametrize(
+    ("schedule"),
+    [{}, {"warmup_iters": 5, "lr_decay_iters": 15, "min_lr": 1e-4, "grad_clip": 0.5}],
+)
+def test_resume_from_checkpoint(tmp_path, schedule):
     """
     Training for 10 steps, saving, then resuming up to 20 steps should give exactly the
-    same weights and losses as training for 20 steps without stopping
+    same weights and losses as training for 20 steps without stopping. With a learning
+    rate schedule, the checkpoint is saved halfway through the decay
     """
 
     uninterrupted = train.main(
-        get_tiny_config(iterations=20), results_dir=tmp_path / "uninterrupted"
+        get_tiny_config(iterations=20, **schedule),
+        results_dir=tmp_path / "uninterrupted",
     )
 
     path = tmp_path / "checkpoint.pt"
-    train.main(get_tiny_config(iterations=10), output_ckpt=path)
+    train.main(get_tiny_config(iterations=10, **schedule), output_ckpt=path)
     resumed = train.main(
-        get_tiny_config(iterations=20),
+        get_tiny_config(iterations=20, **schedule),
         input_ckpt=path,
         results_dir=tmp_path / "resumed",
     )

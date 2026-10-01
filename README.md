@@ -23,6 +23,13 @@ Run `python train.py --config <path_to_config_file>` <br> `--iterations <n>` ove
 
 Training is seeded with the `seed` value in the config, so running the same config twice gives the same model.
 
+Optimization settings in the config:
+- `optimizer`, `lr`, `beta1`, `beta2`, `eps`: AdamW. Defaults are PyTorch's
+- `weight_decay`: applied to weight matrices and embeddings only, not to biases or LayerNorm parameters
+- `warmup_iters`: the learning rate increases linearly from close to 0 up to `lr` over this many steps (default 0, no warmup)
+- `lr_decay_iters` and `min_lr`: after the warmup, the learning rate follows a cosine curve from `lr` down to `min_lr` at step `lr_decay_iters`, then stays at `min_lr`. Set both or neither (default: no decay). The schedule depends only on the step, not on `iterations`, so stopping early or resuming for longer doesn't change it
+- `grad_clip`: if the combined norm of all gradients is above this, they are scaled down to it (default: no clipping)
+
 Evaluation uses the same fixed, non-overlapping windows every time: up to `eval_iterations × batch_size` windows spread evenly across each split. It doesn't use the random number generator, so changing the evaluation settings doesn't change training.
 
 ### To save training progress to a checkpoint
@@ -50,7 +57,7 @@ Every training run saves a JSON file with:
 - the dataset path, size and SHA-256 hash, so results show exactly which data they used
 - parameter count
 - system info (Python, PyTorch, CUDA, GPU)
-- training and validation loss at every evaluation, and after the final step
+- training and validation loss and the learning rate at every evaluation, and after the final step
 - final validation perplexity
 - training throughput (tokens/sec, excluding evaluation) and peak GPU memory
 
@@ -64,7 +71,7 @@ Results are saved to `results/dev/` by default, which is not tracked by git. Res
 `python benchmark.py --model <checkpoint_path>` <br>
 
 Measures speed and memory separately from quality, on random tokens, so it doesn't need the dataset or a trained model:
-- training step (forward, backward and optimizer update) and evaluation step: time and tokens/sec at the config's `batch_size × max_seq_len`
+- training step (forward, backward, gradient clipping and optimizer update) and evaluation step: time and tokens/sec at the config's `batch_size × max_seq_len`
 - generation of `--num-tokens` tokens (default 200) for one sequence, after prompts of each length in `--prompt-lens` (default 1 and `max_seq_len`): total time, time to the first token, ms per token and tokens/sec
 - peak GPU memory for each of these, and the memory taken by the model's parameters and buffers
 
