@@ -74,8 +74,14 @@ def count_parameters(model: torch.nn.Module) -> int:
     return sum(p.numel() for p in model.parameters())
 
 
-def new_run(config: BaseConfig, model: torch.nn.Module) -> dict:
-    """Start a run record. Measurements are added to it during training"""
+def get_model_memory_mb(model: torch.nn.Module) -> float:
+    # buffers count too, e.g. the causal mask in every attention layer
+    tensors = [*model.parameters(), *model.buffers()]
+    return sum(t.numel() * t.element_size() for t in tensors) / 2**20
+
+
+def new_record(config: BaseConfig, model: torch.nn.Module) -> dict:
+    """What every results file records: the run, the code and the system it ran on"""
     return {
         "run_id": get_run_id(config),
         "experiment": config.experiment,
@@ -86,6 +92,13 @@ def new_run(config: BaseConfig, model: torch.nn.Module) -> dict:
         "config": dataclasses.asdict(config),
         "parameters": count_parameters(model),
         "precision": "fp32",
+    }
+
+
+def new_run(config: BaseConfig, model: torch.nn.Module) -> dict:
+    """Start a run record. Measurements are added to it during training"""
+    return {
+        **new_record(config, model),
         "resumed_from": None,
         "evals": [],  # list of {"step", "train_loss", "val_loss"}
     }

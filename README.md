@@ -57,6 +57,17 @@ Results are saved to `results/dev/` by default, which is not tracked by git. Res
 
 `python compare.py [<results_directory> ...]` prints the runs side by side (default `results/dev/`). It shows only the config settings that differ between runs, with the final losses, throughput, peak memory and commit, and warns when runs used different data, tokenizers or hardware, or had uncommitted changes. `--experiment <name>` only compares runs whose experiment name contains `<name>`.
 
+### To benchmark a model
+`python benchmark.py --config <path_to_config_file>` <br>
+`python benchmark.py --model <checkpoint_path>` <br>
+
+Measures speed and memory separately from quality, on random tokens, so it doesn't need the dataset or a trained model:
+- training step (forward, backward and optimizer update) and evaluation step: time and tokens/sec at the config's `batch_size × max_seq_len`
+- generation of `--num-tokens` tokens (default 200) for one sequence, after prompts of each length in `--prompt-lens` (default 1 and `max_seq_len`): total time, time to the first token, ms per token and tokens/sec
+- peak GPU memory for each of these, and the memory taken by the model's parameters and buffers
+
+Each benchmark is called `--warmup` times untimed (default 5), then timed `--repeats` times (default 20). Throughput uses the median time. Results are printed and saved to `results/dev/benchmarks/` with the same run id, commit, config and system info as training runs. `--results-dir` saves them elsewhere.
+
 ### Dataset and tokenization
 
 Uses Karpathy's tinyshakespeare dataset for now. <br>

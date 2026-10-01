@@ -24,6 +24,7 @@ from config import (
     supported_optimizers,
     get_config_from_pytorch_model,
     get_model_from_config,
+    get_optimizer_from_config,
     get_tokenizer_from_config,
 )
 
@@ -99,20 +100,7 @@ def main(
 
     model = get_model_from_config(config)
 
-    optim = None
-    if config.optimizer == "AdamW":
-        # weight decay is applied to every parameter for now, including biases,
-        # LayerNorm weights and embeddings
-        optim = torch.optim.AdamW(
-            model.parameters(),
-            lr=config.lr,
-            betas=(config.beta1, config.beta2),
-            eps=config.eps,
-            weight_decay=config.weight_decay,
-        )
-
-    if optim is None:
-        raise TypeError("Optimizer is not set! Aborting")
+    optim = get_optimizer_from_config(config, model)
 
     # config.iterations is the total number of steps, so a resumed run continues from
     # the step it was saved at. checkpoints saved before the step and RNG state were

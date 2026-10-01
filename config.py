@@ -1,11 +1,16 @@
 import torch
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 from dataclasses import dataclass
 from tokenizer import BPETokenizer, SimpleTokenizer
 from models.bigram import BigramLanguageModel
 from models.attention import AttentionHeadLanguageModel
 from models.transformer import TransformerLanguageModel
+
+# any of the language models. they all have the same forward() and generate()
+LanguageModel = Union[
+    BigramLanguageModel, AttentionHeadLanguageModel, TransformerLanguageModel
+]
 
 supported_tokenizers = ["bpe", "simple"]
 supported_models = ["bigram", "attention", "transformer"]
@@ -100,7 +105,7 @@ def get_config_from_pytorch_model(model: Path):
     return config
 
 
-def get_model_from_config(config: BaseConfig):
+def get_model_from_config(config: BaseConfig) -> LanguageModel:
 
     model = None
     if config.model_type == "bigram":
@@ -138,6 +143,20 @@ def get_model_from_config(config: BaseConfig):
 
     model.to(device)
     return model
+
+
+def get_optimizer_from_config(config: BaseConfig, model: torch.nn.Module):
+    if config.optimizer == "AdamW":
+        # weight decay is applied to every parameter for now, including biases,
+        # LayerNorm weights and embeddings
+        return torch.optim.AdamW(
+            model.parameters(),
+            lr=config.lr,
+            betas=(config.beta1, config.beta2),
+            eps=config.eps,
+            weight_decay=config.weight_decay,
+        )
+    raise TypeError("Optimizer is not set! Aborting")
 
 
 def get_tokenizer_from_config(config: BaseConfig):
