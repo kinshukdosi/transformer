@@ -43,6 +43,18 @@ def test_compare_runs(tmp_path):
     assert "Warning" not in table
 
 
+def test_compare_best_val_loss(tmp_path):
+    """The best validation loss and its step are shown, not just the final ones"""
+
+    runs = get_runs(tmp_path)
+    runs[0]["best"].update({"step": 1750, "val_loss": 0.123456})
+    table = compare_runs(runs)
+
+    assert "best val loss" in table
+    assert "0.1235" in table
+    assert "1750" in table
+
+
 def test_compare_old_runs(tmp_path):
     """Runs saved before newer settings existed are compared using their defaults"""
 

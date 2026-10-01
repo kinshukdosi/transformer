@@ -167,11 +167,12 @@ Every training run saves a JSON file with:
 - system info (Python, PyTorch, CUDA, GPU)
 - training and validation loss and the learning rate at every evaluation, and after the final step
 - final validation perplexity (per token, so only comparable between runs with the same tokenizer)
+- the best evaluation: the lowest validation loss and the step it was reached at. On a small dataset the model can overfit long before the final step
 - training throughput (tokens/sec, excluding evaluation) and peak GPU memory
 
 `results.load_runs(<directory>)` loads every run in a directory.
 
-`python compare.py [<results_directory> ...]` prints runs side by side (default `results/dev/`). It shows only the config settings that differ between runs, with the final losses, throughput, peak memory and commit, and warns when runs used different data, tokenizers or hardware, or had uncommitted changes. `--experiment <name>` only compares runs whose experiment name contains `<name>`.
+`python compare.py [<results_directory> ...]` prints runs side by side (default `results/dev/`). It shows only the config settings that differ between runs, with the final losses, the best validation loss and its step, throughput, peak memory and commit, and warns when runs used different data, tokenizers or hardware, or had uncommitted changes. `--experiment <name>` only compares runs whose experiment name contains `<name>`.
 
 ### Benchmarking
 

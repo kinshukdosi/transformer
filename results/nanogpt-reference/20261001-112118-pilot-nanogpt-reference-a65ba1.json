@@ -194,5 +194,12 @@
     "val_loss": 1.6401667720970066,
     "val_perplexity": 5.156029322358837
   },
-  "checkpoint": "nanogpt-reference.pt"
+  "checkpoint": "nanogpt-reference.pt",
+  "best": {
+    "step": 1750,
+    "lr": 0.0007708228984017721,
+    "train_loss": 1.1156790026959276,
+    "val_loss": 1.4684157061850887,
+    "val_perplexity": 4.342350130109402
+  }
 }

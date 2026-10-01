@@ -356,6 +356,12 @@ def test_run_results(tmp_path):
         math.exp(run["final"]["val_loss"])
     )
 
+    # the evaluation with the lowest validation loss, which can be before the end
+    best = run["best"]
+    assert best["val_loss"] == min(e["val_loss"] for e in run["evals"])
+    assert {k: v for k, v in best.items() if k != "val_perplexity"} in run["evals"]
+    assert best["val_perplexity"] == pytest.approx(math.exp(best["val_loss"]))
+
     training = run["training"]
     assert training["tokens"] == cfg.iterations * cfg.batch_size * cfg.max_seq_len
     assert training["tokens_per_sec"] > 0

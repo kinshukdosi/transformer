@@ -267,6 +267,13 @@ def main(
         "val_perplexity": math.exp(run["evals"][-1]["val_loss"]),
     }
 
+    # on a small dataset the model can overfit long before the final step, so the
+    # final validation loss can be much worse than the best one. min() keeps the
+    # earliest evaluation if there's a tie. a resumed run only knows about the
+    # evaluations it made itself
+    best = min(run["evals"], key=lambda e: e["val_loss"])
+    run["best"] = {**best, "val_perplexity": math.exp(best["val_loss"])}
+
     if output_ckpt is not None:
         checkpoint = {
             "config": dataclasses.asdict(config),

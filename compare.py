@@ -97,6 +97,8 @@ def compare_runs(runs: list[dict]) -> str:
         "params",
         "train loss",
         "val loss",
+        "best val loss",
+        "best step",
         "tokens/sec",
         "peak MB",
         "commit",
@@ -106,6 +108,7 @@ def compare_runs(runs: list[dict]) -> str:
     for run in runs:
         config = get_config(run)
         final = run["final"]
+        best = run["best"]
         training = run["training"]
         rows.append(
             [
@@ -114,6 +117,8 @@ def compare_runs(runs: list[dict]) -> str:
                 format_number(run["parameters"], ","),
                 format_number(final["train_loss"], ".4f"),
                 format_number(final["val_loss"], ".4f"),
+                format_number(best["val_loss"], ".4f"),
+                str(best["step"]),
                 format_number(training["tokens_per_sec"], ",.0f"),
                 format_number(training["peak_memory_mb"], ",.0f"),
                 run["git_commit"][:7] + ("*" if run["git_dirty"] else ""),
