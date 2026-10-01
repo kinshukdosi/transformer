@@ -44,7 +44,12 @@ class Attention(nn.Module):
         self.value = nn.Linear(n_embd, num_kv_heads * self.head_size, bias=False)
         self.output = nn.Linear(num_heads * self.head_size, n_embd, bias=False)
 
-        self.dropout = nn.Dropout(dropout)
+        # dropout is applied in two places, like GPT-2: to the attention weights, so a
+        # token can't rely on attending to any one other token, and to the output, so
+        # the attention branch of the residual connection is regularized the same way
+        # as the feed forward branch
+        self.attn_dropout = nn.Dropout(dropout)
+        self.output_dropout = nn.Dropout(dropout)
 
         # we do this to tell pytorch this tensor is part of the model but is not a
         # learnable parameter. it gets moved with the model.
@@ -87,7 +92,7 @@ class Attention(nn.Module):
             attn = attn.masked_fill(self.tril[:seq_len, :seq_len] == 0, float("-inf"))
 
         attn = F.softmax(attn, dim=-1)
-        attn = self.dropout(attn)
+        attn = self.attn_dropout(attn)
 
         out = attn @ v  # (batch_size, num_heads, seq_len, head_size)
 
@@ -95,7 +100,7 @@ class Attention(nn.Module):
             out.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
         )  # (batch_size, seq_len, num_heads * head_size)
 
-        return self.output(out)
+        return self.output_dropout(self.output(out))
 
     @staticmethod
     def _repeat_kv(x: torch.Tensor, num_repeats: int) -> torch.Tensor:

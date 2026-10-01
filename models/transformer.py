@@ -2,11 +2,15 @@
 Attention Is All You Need. This model adds Feed Forward, Layer Normalization and
 Dropout as well"""
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional
 from models.attention import Attention
+
+# standard deviation of the initial weights, from GPT-2. see _init_weights below
+INIT_STD = 0.02
 
 
 class FeedForward(nn.Module):
@@ -14,7 +18,7 @@ class FeedForward(nn.Module):
     As stated in the paper, the feed-forward network consists of two linear
     transformations with a ReLU activation in between. The ReLU function introduces
     non-linearity into networks by setting negative inputs to zero, and keeping positive
-    values unchanges. A dropout is also applied to the output of each sub-layer.
+    values unchanged. A dropout is also applied to the output of each sub-layer.
     """
 
     def __init__(
@@ -30,17 +34,17 @@ class FeedForward(nn.Module):
         # of d_factor to 4 here.
         d_ff = n_embd * d_factor
 
-        self.network = nn.Sequential(
-            nn.Linear(n_embd, d_ff),
-            nn.ReLU(),
-            nn.Linear(d_ff, n_embd),
-            nn.Dropout(
-                dropout
-            ),  # dropout has a default value P_drop = 0.1 from the paper (section 5.4)
-        )
+        # named like the projections in Attention, so the output projection of both
+        # sub-layers can be found when initializing the weights
+        self.hidden = nn.Linear(n_embd, d_ff)
+        self.output = nn.Linear(d_ff, n_embd)
 
-    def forward(self, inputs):
-        return self.network(inputs)
+        # dropout has a default value P_drop = 0.1 from the paper (section 5.4)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        hidden = F.relu(self.hidden(inputs))  # (batch_size, seq_len, d_ff)
+        return self.dropout(self.output(hidden))  # (batch_size, seq_len, n_embd)
 
 
 class TransformerBlock(nn.Module):
@@ -70,8 +74,8 @@ class TransformerBlock(nn.Module):
             group_size=group_size,
         )
         self.feed_forward = FeedForward(n_embd, dropout)
-        self.layer_norm1 = nn.LayerNorm(n_embd)  # this LayerNorm follows attention
-        self.layer_norm2 = nn.LayerNorm(n_embd)  # this LayerNorm follows feed forward
+        self.layer_norm1 = nn.LayerNorm(n_embd)  # this LayerNorm precedes attention
+        self.layer_norm2 = nn.LayerNorm(n_embd)  # this LayerNorm precedes feed forward
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
 
@@ -87,9 +91,13 @@ class TransformerBlock(nn.Module):
 
 class TransformerLanguageModel(nn.Module):
     """
-    Full transformer architecture, as detailed in the original paper. Shown in Figure 1.
+    Full transformer architecture, based on the original paper. Shown in Figure 1.
     This is a decoder-only transformer! We are only generating text which isn't
     conditioned on anything. Notice that encoder = False by default in TransformerBlock.
+
+    Like GPT-2 rather than the original paper, the blocks are Pre-LN with a final
+    LayerNorm, dropout is applied to the embeddings and to the output of both
+    sub-layers, and the weights are initialized with a small standard deviation.
     """
 
     def __init__(
@@ -110,22 +118,54 @@ class TransformerLanguageModel(nn.Module):
 
         assert n_embd % num_heads == 0, "model dimension must be divisible by num_heads"
 
-        self.transformer_blocks = nn.Sequential(
-            *[
-                TransformerBlock(
-                    n_embd=n_embd,
-                    num_heads=num_heads,
-                    max_seq_len=max_seq_len,
-                    dropout=dropout,
-                    group_size=group_size,
-                )
-                for _ in range(n_layers)
-            ]
-        )
+        blocks = [
+            TransformerBlock(
+                n_embd=n_embd,
+                num_heads=num_heads,
+                max_seq_len=max_seq_len,
+                dropout=dropout,
+                group_size=group_size,
+            )
+            for _ in range(n_layers)
+        ]
+        self.transformer_blocks = nn.Sequential(*blocks)
+
+        # with Pre-LN, the residual stream itself is never normalized inside the blocks,
+        # and its scale grows with every residual addition. so it is normalized once
+        # more before the output projection
+        self.final_layer_norm = nn.LayerNorm(n_embd)
 
         self.out_proj = nn.Linear(
             n_embd, vocab_size
         )  # projection back up to vocab_size to produce logits
+
+        # dropout on the embeddings, before the first block
+        self.dropout = nn.Dropout(dropout)
+
+        self.apply(self._init_weights)
+
+        # every block adds the output of two sub-layers to the residual stream, so its
+        # variance grows with the number of layers. GPT-2 scales down the initial
+        # weights of the projections that write into the residual stream by
+        # 1/sqrt(number of additions), so the scale at the end doesn't depend on depth.
+        # loops over the list rather than the nn.Sequential, which only knows its
+        # contents are nn.Modules, so the type checker doesn't know they have .attention
+        for block in blocks:
+            for proj in [block.attention.output, block.feed_forward.output]:
+                nn.init.normal_(proj.weight, std=INIT_STD / math.sqrt(2 * n_layers))
+
+    @staticmethod
+    def _init_weights(module: nn.Module):
+        # PyTorch's defaults initialize embeddings from N(0, 1), so the embeddings
+        # would start out ~50x larger than the outputs of the linear layers added to
+        # them. GPT-2 initializes everything from N(0, 0.02) with zero biases instead.
+        # LayerNorm keeps its default of weight 1 and bias 0
+        if isinstance(module, nn.Linear):
+            nn.init.normal_(module.weight, std=INIT_STD)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            nn.init.normal_(module.weight, std=INIT_STD)
 
     def forward(
         self, inputs: torch.Tensor, targets: Optional[torch.Tensor] = None
@@ -139,8 +179,9 @@ class TransformerLanguageModel(nn.Module):
         )  # (seq_len, n_embd)
 
         # combine token and positional information by broadcasting addition
-        emb = tok_emb + pos_emb
+        emb = self.dropout(tok_emb + pos_emb)
         emb = self.transformer_blocks(emb)  #  apply all transformer blocks
+        emb = self.final_layer_norm(emb)
 
         # project back up to vocab_size
         logits = self.out_proj(emb)  # (batch_size, seq_len, vocab_size)

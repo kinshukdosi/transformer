@@ -38,10 +38,9 @@ def test_feed_forward_dimensions():
     """Inner layer of the feed forward network should be 4 * n_embd"""
 
     feed_forward = FeedForward(N_EMBD, dropout=0.0)
-    first, _, second, _ = feed_forward.network
 
-    assert first.weight.shape == (4 * N_EMBD, N_EMBD)
-    assert second.weight.shape == (N_EMBD, 4 * N_EMBD)
+    assert feed_forward.hidden.weight.shape == (4 * N_EMBD, N_EMBD)
+    assert feed_forward.output.weight.shape == (N_EMBD, 4 * N_EMBD)
     assert feed_forward(torch.randn(2, MAX_SEQ_LEN, N_EMBD)).shape == (
         2,
         MAX_SEQ_LEN,
@@ -88,6 +87,130 @@ def test_transformer_block_pre_layer_norm():
     assert torch.allclose(ln2_in, inputs + att_out)  # first residual connection
     assert torch.equal(ff_in, ln2_out)  # feed forward sees the normalized input
     assert torch.allclose(out, ln2_in + ff_out)  # second residual connection
+
+
+def test_transformer_final_layer_norm():
+    """The output of the last block is normalized before the output projection"""
+
+    torch.manual_seed(0)
+    model = get_model("transformer").eval()
+
+    captured = {}
+
+    def capture(name):
+        def hook(module, inputs, output):
+            captured[name] = (inputs[0], output)
+
+        return hook
+
+    for name in ["transformer_blocks", "final_layer_norm", "out_proj"]:
+        getattr(model, name).register_forward_hook(capture(name))
+
+    inputs = torch.randint(VOCAB_SIZE, (2, MAX_SEQ_LEN), device=device)
+    with torch.no_grad():
+        model(inputs)
+
+    _, blocks_out = captured["transformer_blocks"]
+    ln_in, ln_out = captured["final_layer_norm"]
+    proj_in, _ = captured["out_proj"]
+
+    assert torch.equal(ln_in, blocks_out)
+    assert torch.equal(proj_in, ln_out)
+
+
+def test_transformer_init():
+    """
+    Weights start from N(0, 0.02) with zero biases, except the projections into the
+    residual stream, which are scaled down by sqrt(2 * n_layers)
+    """
+
+    torch.manual_seed(0)
+    model = TransformerLanguageModel(
+        VOCAB_SIZE,
+        n_embd=64,
+        max_seq_len=MAX_SEQ_LEN,
+        num_heads=NUM_HEADS,
+        n_layers=N_LAYERS,
+        dropout=0.0,
+        group_size=1,
+    )
+    residual_std = 0.02 / math.sqrt(2 * N_LAYERS)
+
+    def assert_std(weight: torch.Tensor, std: float):
+        assert weight.mean().abs() < std / 5
+        assert weight.std().item() == pytest.approx(std, rel=0.1)
+
+    assert_std(model.token_emb_table.weight, 0.02)
+    assert_std(model.pos_emb_table.weight, 0.02)
+    assert_std(model.out_proj.weight, 0.02)
+    assert torch.equal(model.out_proj.bias, torch.zeros_like(model.out_proj.bias))
+
+    for block in model.transformer_blocks:
+        assert isinstance(block, TransformerBlock)
+        assert_std(block.attention.query.weight, 0.02)
+        assert_std(block.feed_forward.hidden.weight, 0.02)
+        assert_std(block.attention.output.weight, residual_std)
+        assert_std(block.feed_forward.output.weight, residual_std)
+        for linear in [block.feed_forward.hidden, block.feed_forward.output]:
+            assert torch.equal(linear.bias, torch.zeros_like(linear.bias))
+        assert torch.equal(block.layer_norm1.weight, torch.ones(64))
+
+
+def test_attention_output_dropout():
+    """Dropout is applied to the attention output, after the output projection"""
+
+    torch.manual_seed(0)
+    block = TransformerBlock(
+        n_embd=N_EMBD, num_heads=NUM_HEADS, max_seq_len=MAX_SEQ_LEN, dropout=0.5
+    ).to(device)
+
+    captured = {}
+
+    def capture(name):
+        def hook(module, inputs, output):
+            captured[name] = output
+
+        return hook
+
+    block.attention.output.register_forward_hook(capture("projection"))
+    block.attention.register_forward_hook(capture("attention"))
+
+    with torch.no_grad():
+        block(torch.randn(2, MAX_SEQ_LEN, N_EMBD, device=device))
+
+    projection, attention = captured["projection"], captured["attention"]
+    dropped = attention == 0
+
+    # roughly half the outputs are dropped, the rest are scaled by 1 / (1 - p)
+    assert 0.3 < dropped.float().mean() < 0.7
+    assert torch.allclose(attention[~dropped], 2 * projection[~dropped])
+
+
+def test_embedding_dropout():
+    """Dropout is applied to the embeddings in training, and not in evaluation"""
+
+    torch.manual_seed(0)
+    model = get_model("transformer", dropout=0.5)
+    assert isinstance(model, TransformerLanguageModel)
+
+    captured = []
+    model.transformer_blocks.register_forward_hook(
+        lambda module, inputs, output: captured.append(inputs[0])
+    )
+
+    inputs = torch.randint(VOCAB_SIZE, (2, MAX_SEQ_LEN), device=device)
+    with torch.no_grad():
+        model.train()
+        model(inputs)
+        model.eval()
+        model(inputs)
+
+    train_emb, eval_emb = captured
+    dropped = train_emb == 0
+
+    assert 0.3 < dropped.float().mean() < 0.7
+    assert torch.allclose(train_emb[~dropped], 2 * eval_emb[~dropped])
+    assert not (eval_emb == 0).any()
 
 
 @pytest.mark.parametrize(("model_type"), ["bigram", "attention", "transformer"])
