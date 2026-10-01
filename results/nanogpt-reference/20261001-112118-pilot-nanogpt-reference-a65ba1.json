@@ -1,0 +1,198 @@
+{
+  "run_id": "20261001-112118-pilot-nanogpt-reference-a65ba1",
+  "experiment": "pilot-nanogpt-reference",
+  "timestamp": "2026-10-01T11:21:18",
+  "git_commit": "b02a423f18892cc35d05307e7779dd174e601621",
+  "git_dirty": false,
+  "system": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "cudnn": 91900,
+    "platform": "Linux-6.17.0-20-generic-x86_64-with-glibc2.39",
+    "device": "cuda",
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "gpu_memory_mb": 11907.8125
+  },
+  "config": {
+    "tokenizer": "simple",
+    "model_type": "transformer",
+    "vocab_size": 65,
+    "data_path": "data/tinyshakespeare.txt",
+    "max_seq_len": 256,
+    "train_split": 0.9,
+    "batch_size": 64,
+    "iterations": 5000,
+    "optimizer": "AdamW",
+    "lr": 0.001,
+    "beta1": 0.9,
+    "beta2": 0.99,
+    "eps": 1e-08,
+    "weight_decay": 0.1,
+    "warmup_iters": 100,
+    "lr_decay_iters": 5000,
+    "min_lr": 0.0001,
+    "grad_clip": 1.0,
+    "eval_iterations": 200,
+    "eval_interval": 250,
+    "seed": 1337,
+    "experiment": "pilot-nanogpt-reference",
+    "n_embd": 384,
+    "num_heads": 6,
+    "dropout": 0.2,
+    "group_size": 1,
+    "n_layers": 6
+  },
+  "parameters": 10786625,
+  "precision": "fp32",
+  "resumed_from": null,
+  "evals": [
+    {
+      "step": 0,
+      "lr": 1e-05,
+      "train_loss": 4.353942272037427,
+      "val_loss": 4.346224541499697
+    },
+    {
+      "step": 250,
+      "lr": 0.0009979206008271391,
+      "train_loss": 1.8640267029309632,
+      "val_loss": 1.9865815398336828
+    },
+    {
+      "step": 500,
+      "lr": 0.0009852826883675631,
+      "train_loss": 1.4961931110188476,
+      "val_loss": 1.6891726392439042
+    },
+    {
+      "step": 750,
+      "lr": 0.0009614856803571157,
+      "train_loss": 1.3518705856614623,
+      "val_loss": 1.5752968451072429
+    },
+    {
+      "step": 1000,
+      "lr": 0.0009271396472013282,
+      "train_loss": 1.2679885136962576,
+      "val_loss": 1.5170722758632966
+    },
+    {
+      "step": 1250,
+      "lr": 0.000883125098683892,
+      "train_loss": 1.209324343081063,
+      "val_loss": 1.4820288088129854
+    },
+    {
+      "step": 1500,
+      "lr": 0.0008305704108364302,
+      "train_loss": 1.1603268273659306,
+      "val_loss": 1.478772860559924
+    },
+    {
+      "step": 1750,
+      "lr": 0.0007708228984017721,
+      "train_loss": 1.1156790026959276,
+      "val_loss": 1.4684157061850887
+    },
+    {
+      "step": 2000,
+      "lr": 0.0007054142744895884,
+      "train_loss": 1.07735088205374,
+      "val_loss": 1.472987465200753
+    },
+    {
+      "step": 2250,
+      "lr": 0.0006360213829156177,
+      "train_loss": 1.0340743163993424,
+      "val_loss": 1.4768180970487923
+    },
+    {
+      "step": 2500,
+      "lr": 0.000564423209907245,
+      "train_loss": 0.9947588959387206,
+      "val_loss": 1.4864354237742807
+    },
+    {
+      "step": 2750,
+      "lr": 0.0004924552772419723,
+      "train_loss": 0.9540362403089372,
+      "val_loss": 1.5026555086004323
+    },
+    {
+      "step": 3000,
+      "lr": 0.0004219625860160354,
+      "train_loss": 0.9109029354291496,
+      "val_loss": 1.5184626442262497
+    },
+    {
+      "step": 3250,
+      "lr": 0.00035475231739709885,
+      "train_loss": 0.8726602157777865,
+      "val_loss": 1.5309733105801988
+    },
+    {
+      "step": 3500,
+      "lr": 0.0002925475029450237,
+      "train_loss": 0.8395811882562645,
+      "val_loss": 1.548823143970007
+    },
+    {
+      "step": 3750,
+      "lr": 0.00023694285222843113,
+      "train_loss": 0.8039829973753725,
+      "val_loss": 1.568836802723764
+    },
+    {
+      "step": 4000,
+      "lr": 0.00018936387015941957,
+      "train_loss": 0.771997848751289,
+      "val_loss": 1.5866747582095793
+    },
+    {
+      "step": 4250,
+      "lr": 0.00015103031213214996,
+      "train_loss": 0.7462759238212457,
+      "val_loss": 1.6098577877570843
+    },
+    {
+      "step": 4500,
+      "lr": 0.00012292491384519912,
+      "train_loss": 0.7247855039890613,
+      "val_loss": 1.6177806141732753
+    },
+    {
+      "step": 4750,
+      "lr": 0.00010576819746349742,
+      "train_loss": 0.7076369158560692,
+      "val_loss": 1.6316257789217192
+    },
+    {
+      "step": 5000,
+      "lr": 0.0001,
+      "train_loss": 0.6930308844689902,
+      "val_loss": 1.6401667720970066
+    }
+  ],
+  "dataset": {
+    "path": "data/tinyshakespeare.txt",
+    "sha256": "86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed",
+    "bytes": 1115394
+  },
+  "training": {
+    "start_step": 0,
+    "steps": 5000,
+    "tokens": 81920000,
+    "time_s": 1217.9519862739962,
+    "tokens_per_sec": 67260.45108774172,
+    "peak_memory_mb": 3482.154296875
+  },
+  "final": {
+    "step": 5000,
+    "lr": 0.0001,
+    "train_loss": 0.6930308844689902,
+    "val_loss": 1.6401667720970066,
+    "val_perplexity": 5.156029322358837
+  },
+  "checkpoint": "nanogpt-reference.pt"
+}

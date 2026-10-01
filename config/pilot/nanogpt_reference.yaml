@@ -1,0 +1,51 @@
+# reference check against nanoGPT's shakespeare_char config, which reaches a validation
+# loss of ~1.47 after 5000 steps: https://github.com/karpathy/nanoGPT
+# same shape and training settings. differences: nanoGPT uses GELU instead of ReLU,
+# ties the input embedding and output projection weights, and has no biases
+tokenizer: simple
+
+# model parameters
+model_type: transformer
+vocab_size: 65
+
+# data
+data_path: data/tinyshakespeare.txt
+max_seq_len: 256
+train_split: 0.9 # proportion of dataset to use for training, rest is for validation
+
+# training
+batch_size: 64
+iterations: 5000
+
+# optimization
+optimizer: AdamW
+lr: 1e-3
+beta1: 0.9
+beta2: 0.99
+eps: 1e-8
+weight_decay: 0.1
+
+# learning rate schedule: linear warmup, then cosine decay to min_lr at lr_decay_iters
+warmup_iters: 100
+lr_decay_iters: 5000
+min_lr: 1e-4
+grad_clip: 1.0
+
+# evaluation
+eval_iterations: 200
+eval_interval: 250
+
+# recorded in the results and used in the results file name
+experiment: pilot-nanogpt-reference
+
+# reproducibility
+seed: 1337
+
+# attention head parameters
+n_embd: 384
+num_heads: 6
+dropout: 0.2
+group_size: 1
+
+# transformer specific parameters
+n_layers: 6
