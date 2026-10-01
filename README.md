@@ -40,6 +40,8 @@ Checkpoints contain the config, model and optimizer state, the trained tokenizer
 
 ### To generate text
 `python generate.py --model <checkpoint_path> --prompt "ROMEO:"` <br>
+`--num-tokens <n>` sets how many tokens to generate (default 500) <br>
+`--greedy` always picks the most likely next token instead of sampling, so the output is the same every time. It tends to get stuck repeating itself, but it is useful for checking that two ways of generating give exactly the same tokens <br>
 
 ### Run results
 Every training run saves a JSON file with:

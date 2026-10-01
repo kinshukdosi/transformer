@@ -219,3 +219,38 @@ def test_generate_is_seeded():
             outputs.append(model.generate(prompt, num_tokens=20))
 
     assert torch.equal(outputs[0], outputs[1])
+
+
+@pytest.mark.parametrize(("model_type"), ["bigram", "attention", "transformer"])
+def test_generate_greedy(model_type):
+    """
+    Greedy generation picks the most likely token at every step, gives the same output
+    whatever the seed, and doesn't use the random number generator
+    """
+
+    model = get_model(model_type).eval()
+    prompt = torch.randint(VOCAB_SIZE, (2, 3), device=device)
+    num_tokens = 2 * MAX_SEQ_LEN
+
+    outputs = []
+    for seed in [0, 1]:
+        torch.manual_seed(seed)
+        rng_state = torch.get_rng_state()
+        cuda_rng_state = torch.cuda.get_rng_state_all()
+        with torch.no_grad():
+            outputs.append(model.generate(prompt, num_tokens=num_tokens, greedy=True))
+        assert torch.equal(torch.get_rng_state(), rng_state)
+        assert all(
+            torch.equal(a, b)
+            for a, b in zip(torch.cuda.get_rng_state_all(), cuda_rng_state)
+        )
+
+    output = outputs[0]
+    assert torch.equal(output, outputs[1])
+
+    # every new token is the argmax of the prediction for the context before it
+    for i in range(3, 3 + num_tokens):
+        context = output[:, :i][:, -MAX_SEQ_LEN:]
+        with torch.no_grad():
+            logits, _ = model(context)
+        assert torch.equal(output[:, i], logits[:, -1, :].argmax(dim=-1))

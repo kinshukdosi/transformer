@@ -158,8 +158,13 @@ class TransformerLanguageModel(nn.Module):
 
         return logits, loss
 
-    def generate(self, inputs: torch.Tensor, num_tokens: int) -> torch.Tensor:
-        """Generate num_tokens new tokens for each independent sequence (batch)"""
+    def generate(
+        self, inputs: torch.Tensor, num_tokens: int, greedy: bool = False
+    ) -> torch.Tensor:
+        """
+        Generate num_tokens new tokens for each independent sequence (batch). Samples
+        from the predicted distribution, or picks the most likely token if greedy
+        """
         batch_size, seq_len = inputs.shape
 
         for _ in range(num_tokens):
@@ -171,10 +176,16 @@ class TransformerLanguageModel(nn.Module):
             logits, _ = self(sliced)
 
             logits = logits[:, -1, :]
-            probabilities = F.softmax(logits, dim=-1)  # convert logits to probabilities
+            if greedy:
+                # always the most likely token, so the output is deterministic and
+                # doesn't use the random number generator
+                next_token = torch.argmax(logits, dim=-1, keepdim=True)
+            else:
+                # convert logits to probabilities
+                probabilities = F.softmax(logits, dim=-1)
 
-            # sample one new token per batch
-            next_token = torch.multinomial(probabilities, num_samples=1)
+                # sample one new token per batch
+                next_token = torch.multinomial(probabilities, num_samples=1)
             inputs = torch.cat((inputs, next_token), dim=1)  # append new token
 
         assert inputs.shape == (batch_size, seq_len + num_tokens)

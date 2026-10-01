@@ -247,6 +247,26 @@ def test_generate_script(tmp_path, capsys):
     assert len(output) > len(prompt) + 100
 
 
+def test_generate_script_options(tmp_path, capsys):
+    """The script generates num_tokens tokens, and greedy output ignores the seed"""
+
+    path = tmp_path / "checkpoint.pt"
+    train.main(get_tiny_config(), output_ckpt=path)
+    capsys.readouterr()  # discard training output
+
+    prompt = "ROMEO:"
+    outputs = []
+    for seed in [0, 1]:
+        torch.manual_seed(seed)
+        generate.main(path, prompt, num_tokens=50, greedy=True)
+        outputs.append(capsys.readouterr().out)
+
+    # the tiny config uses the character tokenizer, so one token is one character.
+    # print() adds the final newline
+    assert len(outputs[0]) == len(prompt) + 50 + 1
+    assert outputs[0] == outputs[1]
+
+
 def test_checkpoint_tokenizer(tmp_path, capsys):
     """Generating from a checkpoint shouldn't need the dataset the tokenizer was
     trained on"""
