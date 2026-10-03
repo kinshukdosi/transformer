@@ -136,7 +136,7 @@ Configs are YAML files. See [`config/debug/transformer.yaml`](config/debug/trans
 | Key | Meaning |
 | --- | --- |
 | `model_type` | `bigram`, `attention` or `transformer` |
-| `tokenizer`, `vocab_size` | `simple` (character-level) or `bpe` (byte-pair encoding, `vocab_size` > 256) |
+| `tokenizer`, `vocab_size` | `simple` (character-level) or `bpe` (byte-pair encoding within GPT-4-style regex chunks, `vocab_size` > 256) |
 | `data_path`, `train_split` | Text file, and the fraction of it used for training. The rest is the validation split |
 | `max_seq_len` | Context length: the most tokens the model can attend to |
 | `batch_size`, `iterations` | Sequences per step, and the total number of training steps |

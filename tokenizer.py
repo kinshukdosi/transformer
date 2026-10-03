@@ -1,9 +1,22 @@
 import json
+import heapq
 import argparse
+import regex
 from pathlib import Path
+from collections import Counter, defaultdict
 
 BYTE_RANGE = 256
 DATA_DIR = Path(__file__).parent / "data"
+
+# GPT-4's pre-tokenization pattern (from tiktoken's cl100k_base). text is split into
+# chunks before BPE, and merges never cross a chunk boundary, so tokens can't span
+# words, e.g. "and " or "e t". chunks are: contractions ('s, 't, 're ...), words with
+# an optional leading space or punctuation char, numbers of up to 3 digits,
+# punctuation runs, and whitespace. \p{L} is any unicode letter and \p{N} any number,
+# which is why this needs the regex module instead of re
+SPLIT_PATTERN = regex.compile(
+    r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
+)
 
 
 class SimpleTokenizer:
@@ -47,12 +60,16 @@ class BPETokenizer:
     Byte-pair encoding (BPE). Many modern LLMs use this algorithm to train their
     tokenizers. The idea is to replace the most common contiguous sequences of
     characters into new tokens until a vocabulary of a predefined size is obtained.
+
+    Like GPT-2 and later, the text is first split into chunks (roughly words) with a
+    regex, and BPE runs within each chunk. See Karpathy's minbpe RegexTokenizer.
     """
 
     def __init__(self) -> None:
         self.merges: dict[tuple[int, int], int] = {}
         self.vocab: dict[int, bytes] = {}
         self.vocab_size = 0
+        self._cache: dict[str, list] = {}  # chunk -> token ids, see encode()
 
     def _replace(self, ids: list, pair: tuple[int, int], token_id: int) -> list:
         """Replaces given consecutive pair with new token id"""
@@ -79,10 +96,29 @@ class BPETokenizer:
             vocab_size > BYTE_RANGE
         ), "Desired vocabulary size must be greater than 256"
 
-        self.vocab_size = vocab_size
+        # merges never cross chunk boundaries, so a chunk that appears 1000 times only
+        # needs to be stored once, along with its count. natural text has far fewer
+        # distinct chunks than total chunks, which is what makes this fast
+        chunk_counts = Counter(SPLIT_PATTERN.findall(text))
+        words = [list(chunk.encode("utf-8")) for chunk in chunk_counts]
+        freqs = list(chunk_counts.values())
 
-        text_bytes = text.encode("utf-8")  # convert to raw bytes
-        ids = list(text_bytes)  # list of ints in range 0 to 255 (byte range)
+        # count every pair once up front, and remember which words contain it. after
+        # that, each merge only updates the words that contain the merged pair, instead
+        # of recounting the whole text
+        pair_counts: dict[tuple[int, int], int] = defaultdict(int)
+        pair_words: dict[tuple[int, int], set[int]] = defaultdict(set)
+        for word_idx, (word, freq) in enumerate(zip(words, freqs)):
+            for pair in zip(word, word[1:]):
+                pair_counts[pair] += freq
+                pair_words[pair].add(word_idx)
+
+        # max-heap of (-count, pair), so the most common pair can be found without
+        # scanning every pair. when a count changes we push the new count rather than
+        # updating the old entry, and skip old entries when they are popped. ties are
+        # broken by the smallest pair, so training is deterministic
+        heap = [(-count, pair) for pair, count in pair_counts.items()]
+        heapq.heapify(heap)
 
         vocab: dict[int, bytes] = {
             x: bytes([x]) for x in range(BYTE_RANGE)
@@ -93,16 +129,45 @@ class BPETokenizer:
         # next_id is the next available entry for the vocabulary
         for next_id in range(BYTE_RANGE, vocab_size):
 
-            counts = self._get_counts(ids)
+            max_pair = None
+            while heap:
+                neg_count, pair = heapq.heappop(heap)
+                if neg_count < 0 and pair_counts[pair] == -neg_count:
+                    max_pair = pair
+                    break
+            if max_pair is None:
+                break  # every chunk is a single token, there is nothing left to merge
 
-            max_pair = max(counts, key=lambda x: counts[x])
-            ids = self._replace(ids, max_pair, next_id)
+            # remove the old pairs of every affected word, merge, then add its new pairs
+            changed = set()
+            for word_idx in pair_words.pop(max_pair):
+                word, freq = words[word_idx], freqs[word_idx]
+                for pair in zip(word, word[1:]):
+                    pair_counts[pair] -= freq
+                    changed.add(pair)
+
+                word = self._replace(word, max_pair, next_id)
+                words[word_idx] = word
+
+                for pair in zip(word, word[1:]):
+                    pair_counts[pair] += freq
+                    pair_words[pair].add(word_idx)
+                    changed.add(pair)
+                # pair_words isn't cleaned up for pairs a word no longer contains. if
+                # one of those pairs is merged later, _replace leaves the word unchanged
+                # and its counts are removed and added back, so the result is the same
+
+            for pair in changed:
+                if pair_counts[pair] > 0:
+                    heapq.heappush(heap, (-pair_counts[pair], pair))
 
             merges[max_pair] = next_id
             vocab[next_id] = vocab[max_pair[0]] + vocab[max_pair[1]]
 
         self.merges = merges
         self.vocab = vocab
+        self.vocab_size = len(vocab)
+        self._cache = {}
 
     def decode(self, ids: list) -> str:
         text_bytes = b"".join(self.vocab[x] for x in ids)
@@ -110,8 +175,21 @@ class BPETokenizer:
         return text
 
     def encode(self, text: str) -> list:
-        text_bytes = text.encode("utf-8")  # convert to raw bytes
-        ids = list(text_bytes)
+        # each distinct chunk is only encoded once, then looked up. the cache is kept
+        # between calls, so encoding the validation split reuses the training split's
+        # chunks. it is cleared whenever the merges change
+        ids = []
+        for chunk in SPLIT_PATTERN.findall(text):
+            chunk_ids = self._cache.get(chunk)
+            if chunk_ids is None:
+                chunk_ids = self._encode_chunk(chunk.encode("utf-8"))
+                self._cache[chunk] = chunk_ids
+            ids.extend(chunk_ids)
+        return ids
+
+    def _encode_chunk(self, chunk_bytes: bytes) -> list:
+        """Applies the learned merges to the bytes of a single chunk"""
+        ids = list(chunk_bytes)
         while len(ids) >= 2:
 
             counts = self._get_counts(ids)
@@ -157,6 +235,7 @@ class BPETokenizer:
         self.vocab = {int(k): v.encode("latin-1") for k, v in state["vocab"].items()}
         self.merges = {(a, b): c for a, b, c in state["merges"]}
         self.vocab_size = len(self.vocab)
+        self._cache = {}
 
     def save(self, path: Path = DATA_DIR / "tokenizer.json"):
         assert path.suffix == ".json", "Path should point to .json file"

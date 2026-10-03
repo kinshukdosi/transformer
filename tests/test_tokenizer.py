@@ -5,7 +5,7 @@ Correctness tests for the character-level and BPE tokenizers
 import torch
 import pytest
 from pathlib import Path
-from tokenizer import BYTE_RANGE, BPETokenizer, SimpleTokenizer
+from tokenizer import BYTE_RANGE, SPLIT_PATTERN, BPETokenizer, SimpleTokenizer
 
 TEST_DIR = Path(__file__).parent
 DATA_DIR = TEST_DIR.parent / "data"
@@ -117,3 +117,72 @@ def test_state_dict(tokenizer, tmp_path):
     assert restored.vocab_size == original.vocab_size
     assert restored.encode(text) == original.encode(text)
     assert restored.decode(original.encode(text)) == text
+
+
+def naive_bpe_train(text: str, vocab_size: int) -> dict[tuple[int, int], int]:
+    """
+    Helper function for tests. The slow, obviously correct version of BPE training:
+    recount every pair in every chunk before each merge
+    """
+    chunks = [list(chunk.encode("utf-8")) for chunk in SPLIT_PATTERN.findall(text)]
+    merges = {}
+    for next_id in range(BYTE_RANGE, vocab_size):
+        counts = {}
+        for chunk in chunks:
+            for pair in zip(chunk, chunk[1:]):
+                counts[pair] = counts.get(pair, 0) + 1
+        if not counts:
+            break
+        # most common pair, ties broken by the smallest pair like BPETokenizer
+        max_pair = min(counts, key=lambda pair: (-counts[pair], pair))
+        chunks = [BPETokenizer()._replace(chunk, max_pair, next_id) for chunk in chunks]
+        merges[max_pair] = next_id
+    return merges
+
+
+def naive_bpe_encode(text: str, merges: dict[tuple[int, int], int]) -> list:
+    """Helper function for tests. Applies every merge, in order, to every chunk"""
+    ids = []
+    for chunk in SPLIT_PATTERN.findall(text):
+        chunk_ids = list(chunk.encode("utf-8"))
+        for pair, token_id in merges.items():
+            chunk_ids = BPETokenizer()._replace(chunk_ids, pair, token_id)
+        ids.extend(chunk_ids)
+    return ids
+
+
+def test_bpe_matches_naive():
+    """Fast training and encoding should give exactly the same result as the naive way"""
+
+    text = get_text(10_000)
+    tokenizer = BPETokenizer()
+    tokenizer.train(text, VOCAB_SIZE)
+
+    assert tokenizer.merges == naive_bpe_train(text, VOCAB_SIZE)
+
+    # also encode text the tokenizer wasn't trained on
+    unseen = get_text(20_000)[10_000:] + "Ünïcödé, 世界 and emoji 🙂\ttabs 12345"
+    for t in [text, unseen]:
+        assert tokenizer.encode(t) == naive_bpe_encode(t, tokenizer.merges)
+
+
+def test_bpe_merges_stay_within_words():
+    """Text is split into chunks before BPE, so no token joins a letter to a space"""
+
+    tokenizer = BPETokenizer()
+    tokenizer.train(get_text(), 1000)
+
+    for token in tokenizer.vocab.values():
+        text = token.decode("utf-8", errors="replace")
+        assert not any(a.isalpha() and b.isspace() for a, b in zip(text, text[1:]))
+
+
+def test_bpe_stops_when_nothing_left_to_merge():
+    """If every chunk is already one token, the vocabulary is smaller than requested"""
+
+    tokenizer = BPETokenizer()
+    tokenizer.train("ab ab ab", VOCAB_SIZE)
+
+    # "ab" and " ab" are the only chunks, so 2 merges: a+b and then space+ab
+    assert tokenizer.vocab_size == BYTE_RANGE + 2
+    assert tokenizer.encode("ab ab") == [BYTE_RANGE, BYTE_RANGE + 1]
